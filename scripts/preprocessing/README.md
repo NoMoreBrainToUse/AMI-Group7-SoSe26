@@ -168,6 +168,65 @@ python scripts/preprocessing/prepare_fred_yolo.py \
   --test-seqs 34,110
 ```
 
+To include synchronized empty-label negative samples for RGB, Event, and fusion
+training, add a positive `--negative-ratio`:
+
+Windows PowerShell:
+
+```powershell
+python scripts\preprocessing\prepare_fred_yolo.py --dataset-root dataset --output-root processed\fred10_neg05 --train-seqs 0,1,11,101,102,103 --val-seqs 10,21 --test-seqs 34,110 --negative-ratio 0.5
+```
+
+Linux/macOS:
+
+```bash
+python scripts/preprocessing/prepare_fred_yolo.py \
+  --dataset-root dataset \
+  --output-root processed/fred10_neg05 \
+  --train-seqs 0,1,11,101,102,103 \
+  --val-seqs 10,21 \
+  --test-seqs 34,110 \
+  --negative-ratio 0.5
+```
+
+`--negative-ratio 0.5` adds up to one synchronized empty-label sample for every
+two positive samples in each sequence. Negative frames are sampled only when both
+RGB and Event frames can be matched, and when the candidate time is at least
+`--negative-exclusion` seconds away from any annotated box.
+
+`--negative-ratio` is not the percentage of raw empty `.txt` files to use. It is
+defined as:
+
+```text
+negative_ratio = number_of_negative_samples / number_of_positive_samples
+```
+
+For example, if a sequence has 1,864 positive samples, `--negative-ratio 0.5`
+adds up to 932 synchronized negative samples. The final negative share is then:
+
+```text
+0.5 / (1.0 + 0.5) = 33.3%
+```
+
+To target a desired final negative share `p`, use:
+
+```text
+negative_ratio = p / (1 - p)
+```
+
+Examples:
+
+```text
+target negative share 30% -> --negative-ratio 0.43
+target negative share 40% -> --negative-ratio 0.67
+target negative share 50% -> --negative-ratio 1.0
+```
+
+The raw empty-label percentages in `Event_YOLO/` are useful diagnostics, but the
+script does not copy those event-only empty labels directly. Negative samples are
+constructed only when a synchronized RGB/Event pair exists, so RGB-only,
+Event-only, and fusion datasets stay aligned.
+
 By default, the annotation fallback order is:
 
 ```text
@@ -304,6 +363,10 @@ rgb_delta_s    absolute RGB/annotation time difference
 event_delta_s  absolute Event/annotation time difference
 num_boxes      number of boxes in this sample
 ```
+
+For negative samples, `num_boxes` is `0`, both label files are empty, and
+`label_time_s` is the synchronized RGB sample time used to form the pair. This
+keeps the manifest numeric while making the target explicitly empty.
 
 ## 9. Which Labels Each Model Should Read
 
@@ -686,3 +749,10 @@ RGB/Event frame counts differ but timestamps can be matched
 This conservative strategy keeps the pipeline simple, reproducible, and easy to
 explain in the report.
 
+If `--negative-ratio` is greater than `0`, the script also writes synchronized
+empty-label samples. These samples are not read from raw `RGB_YOLO/` or
+`Event_YOLO/` labels as independent supervision; they are constructed as paired
+RGB/Event frames with no nearby annotation, then written consistently to
+`rgb_yolo`, `event_yolo`, and `paired`. In the paired manifest, these rows use
+`num_boxes=0`, and both `rgb_label` and `event_label` point to empty YOLO label
+files.

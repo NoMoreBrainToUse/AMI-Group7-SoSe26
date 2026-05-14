@@ -24,6 +24,7 @@ import bisect
 import csv
 import json
 import os
+import random
 import re
 import shutil
 import struct
@@ -61,6 +62,8 @@ class SequenceResult:
     invalid_boxes: int = 0
     unmatched_rgb: int = 0
     unmatched_event: int = 0
+    negative_candidates: int = 0
+    negative_samples_written: int = 0
     missing_dirs: Optional[list[str]] = None
 
 
@@ -189,6 +192,17 @@ def nearest(timeline: list[TimedPath], target_s: float, max_delta_s: float) -> O
     return None
 
 
+def has_near_time(times: list[float], target_s: float, exclusion_s: float) -> bool:
+    if not times:
+        return False
+    pos = bisect.bisect_left(times, target_s)
+    if pos < len(times) and abs(times[pos] - target_s) <= exclusion_s:
+        return True
+    if pos > 0 and abs(times[pos - 1] - target_s) <= exclusion_s:
+        return True
+    return False
+
+
 def read_image_size(path: Path) -> tuple[int, int]:
     try:
         with path.open("rb") as handle:
@@ -299,6 +313,9 @@ def process_sequence(
     materialize: str,
     overwrite: bool,
     include_removed_in_rgb_timeline: bool,
+    negative_ratio: float,
+    negative_exclusion_s: float,
+    negative_seed: int,
 ) -> tuple[SequenceResult, list[dict[str, str]]]:
     result = SequenceResult(sequence=seq, split=split, annotation_file=None, missing_dirs=[])
     rgb_dir = seq_dir / rgb_dir_name
@@ -325,6 +342,8 @@ def process_sequence(
 
     manifest_rows: list[dict[str, str]] = []
     size_cache: dict[Path, tuple[int, int]] = {}
+    used_rgb_paths: set[Path] = set()
+    used_event_paths: set[Path] = set()
 
     for label_time in sorted(annotations):
         rgb_item = nearest(rgb_timeline, label_time, max_delta_s)
@@ -365,6 +384,8 @@ def process_sequence(
         materialize_image(event_item.path, event_dst, materialize, overwrite)
         write_label(rgb_label_dst, rgb_lines)
         write_label(event_label_dst, event_lines)
+        used_rgb_paths.add(rgb_item.path)
+        used_event_paths.add(event_item.path)
 
         manifest_rows.append(
             {
@@ -386,6 +407,61 @@ def process_sequence(
             }
         )
         result.samples_written += 1
+
+    if negative_ratio > 0 and result.samples_written > 0:
+        annotation_times = sorted(annotations)
+        negative_candidates: list[tuple[TimedPath, TimedPath]] = []
+        for rgb_item in rgb_timeline:
+            if rgb_item.path in used_rgb_paths:
+                continue
+            event_item = nearest(event_timeline, rgb_item.time_s, max_delta_s)
+            if event_item is None or event_item.path in used_event_paths:
+                continue
+            if has_near_time(annotation_times, rgb_item.time_s, negative_exclusion_s):
+                continue
+            if has_near_time(annotation_times, event_item.time_s, negative_exclusion_s):
+                continue
+            negative_candidates.append((rgb_item, event_item))
+
+        result.negative_candidates = len(negative_candidates)
+        negative_limit = min(len(negative_candidates), int(round(result.samples_written * negative_ratio)))
+        rng = random.Random(f"{negative_seed}:{split}:{seq}")
+        rng.shuffle(negative_candidates)
+        selected_negatives = sorted(negative_candidates[:negative_limit], key=lambda pair: pair[0].time_s)
+
+        for rgb_item, event_item in selected_negatives:
+            time_us = int(round(rgb_item.time_s * 1_000_000))
+            stem = f"seq{seq}_neg_{time_us:09d}"
+            rgb_dst = output_root / "rgb_yolo" / "images" / split / f"{stem}{rgb_item.path.suffix.lower()}"
+            event_dst = output_root / "event_yolo" / "images" / split / f"{stem}{event_item.path.suffix.lower()}"
+            rgb_label_dst = output_root / "rgb_yolo" / "labels" / split / f"{stem}.txt"
+            event_label_dst = output_root / "event_yolo" / "labels" / split / f"{stem}.txt"
+
+            materialize_image(rgb_item.path, rgb_dst, materialize, overwrite)
+            materialize_image(event_item.path, event_dst, materialize, overwrite)
+            write_label(rgb_label_dst, [])
+            write_label(event_label_dst, [])
+
+            manifest_rows.append(
+                {
+                    "sequence": seq,
+                    "split": split,
+                    "label_time_s": f"{rgb_item.time_s:.6f}",
+                    "rgb_time_s": f"{rgb_item.time_s:.6f}",
+                    "event_time_s": f"{event_item.time_s:.6f}",
+                    "rgb_delta_s": "0.000000",
+                    "event_delta_s": f"{abs(event_item.time_s - rgb_item.time_s):.6f}",
+                    "rgb_image": rel(rgb_dst, output_root),
+                    "event_image": rel(event_dst, output_root),
+                    "rgb_label": rel(rgb_label_dst, output_root),
+                    "event_label": rel(event_label_dst, output_root),
+                    "source_rgb": str(rgb_item.path),
+                    "source_event": str(event_item.path),
+                    "annotation_file": str(annotation_file),
+                    "num_boxes": "0",
+                }
+            )
+            result.negative_samples_written += 1
 
     return result, manifest_rows
 
@@ -449,6 +525,19 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--frame-period", type=float, default=0.033333)
     parser.add_argument("--max-delta", type=float, default=0.04, help="Maximum allowed label/image time delta in seconds.")
+    parser.add_argument(
+        "--negative-ratio",
+        type=float,
+        default=0.0,
+        help="Add synchronized empty-label samples per sequence as ratio of positive samples. 0 keeps legacy behavior.",
+    )
+    parser.add_argument(
+        "--negative-exclusion",
+        type=float,
+        default=0.066,
+        help="Minimum time distance in seconds from any annotated box when sampling negative frames.",
+    )
+    parser.add_argument("--negative-seed", type=int, default=42, help="Seed for deterministic negative-frame sampling.")
     parser.add_argument("--materialize", choices=["hardlink", "copy"], default="hardlink")
     parser.add_argument("--overwrite", action="store_true")
     parser.add_argument(
@@ -461,6 +550,11 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    if args.negative_ratio < 0:
+        raise ValueError("--negative-ratio must be non-negative.")
+    if args.negative_exclusion < 0:
+        raise ValueError("--negative-exclusion must be non-negative.")
+
     dataset_root = args.dataset_root.resolve()
     output_root = args.output_root.resolve()
     annotation_candidates = parse_seq_list(args.annotation_files)
@@ -499,6 +593,9 @@ def main() -> int:
                 materialize=args.materialize,
                 overwrite=args.overwrite,
                 include_removed_in_rgb_timeline=args.include_removed_in_rgb_timeline,
+                negative_ratio=args.negative_ratio,
+                negative_exclusion_s=args.negative_exclusion,
+                negative_seed=args.negative_seed,
             )
             all_results.append(result)
             all_manifests[split].extend(rows)
@@ -516,6 +613,9 @@ def main() -> int:
         "annotation_files": annotation_candidates,
         "frame_period": args.frame_period,
         "max_delta": args.max_delta,
+        "negative_ratio": args.negative_ratio,
+        "negative_exclusion": args.negative_exclusion,
+        "negative_seed": args.negative_seed,
         "materialize": args.materialize,
         "include_removed_in_rgb_timeline": args.include_removed_in_rgb_timeline,
         "splits": splits,
