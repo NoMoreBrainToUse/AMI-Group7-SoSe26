@@ -1,0 +1,7 @@
+path: /home/simonwesenick/Projects/ami-project/dataset/fred_yolo_1/event
+train: images/train
+val:   images/val
+test:  images/test
+nc: 1
+names:
+  0: object
