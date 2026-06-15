@@ -2,11 +2,19 @@
 __pycache__/
 *.pyc
 *.pyo
-*.pt
 *.pth
 dataset/
 processed/
+logs/
 .DS_Store
 *.egg-info/
 dist/
 build/
+yolo11m.pt
+yolo26n.pt
+
+# allow specific trained weights
+*.pt
+!ami-project/runs/event_yolo/fred_subset_v3_event_yolo11m/weights/best.pt
+!ami-project/runs/verifier/rgb_v3/mobilenet_v3_small/best.pt
+!ami-project/runs/verifier/rgb_v3/event_mobilenet_v3_small/best.pt
