@@ -1,0 +1,17 @@
+{
+  "train_manifest": "processed/fred_subset_v3/crops/event/crop_manifest_event_train_conf0.20.jsonl",
+  "val_manifest": "processed/fred_subset_v3/crops/event/crop_manifest_event_val_conf0.20.jsonl",
+  "output": "runs/verifier/rgb_v3",
+  "name": "event_mobilenet_v3_small",
+  "arch": "mobilenet_v3_small",
+  "epochs": 30,
+  "batch": 64,
+  "lr": 0.001,
+  "weight_decay": 0.0001,
+  "crop_size": 96,
+  "workers": 4,
+  "device": null,
+  "seed": 42,
+  "no_pretrained": false,
+  "freeze_backbone": false
+}

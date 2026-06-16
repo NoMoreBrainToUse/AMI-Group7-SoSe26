@@ -1,0 +1,59 @@
+{
+  "recall_target": 0.95,
+  "n_tp": 14324,
+  "n_fp": 1905,
+  "rgb_scored": "/home/simonwesenick/Projects/ami-project/runs/verifier/rgb_v4/efficientnet_b0/scored_rgb_val_conf0.20.jsonl",
+  "event_scored": "/home/simonwesenick/Projects/ami-project/runs/verifier/rgb_v4/event_efficientnet_b0/scored_event_val_conf0.20.jsonl",
+  "fusion_sweep": [
+    {
+      "lambda": 0.25,
+      "threshold": 0.6621329886118865,
+      "recall": 0.9500139625802848,
+      "tp": 13608,
+      "fp": 764,
+      "fp_reduction_pct": 59.9
+    },
+    {
+      "lambda": 0.5,
+      "threshold": 0.8646013767542498,
+      "recall": 0.9500139625802848,
+      "tp": 13608,
+      "fp": 623,
+      "fp_reduction_pct": 67.3
+    },
+    {
+      "lambda": 0.75,
+      "threshold": 0.9319384335085211,
+      "recall": 0.9500139625802848,
+      "tp": 13608,
+      "fp": 568,
+      "fp_reduction_pct": 70.18
+    },
+    {
+      "lambda": 1.0,
+      "threshold": 0.9578781146006892,
+      "recall": 0.9500139625802848,
+      "tp": 13608,
+      "fp": 548,
+      "fp_reduction_pct": 71.23
+    },
+    {
+      "lambda": 1.5,
+      "threshold": 0.9781799503811675,
+      "recall": 0.9500139625802848,
+      "tp": 13608,
+      "fp": 552,
+      "fp_reduction_pct": 71.02
+    },
+    {
+      "lambda": 2.0,
+      "threshold": 0.9820396628564882,
+      "recall": 0.9500139625802848,
+      "tp": 13608,
+      "fp": 576,
+      "fp_reduction_pct": 69.76
+    }
+  ],
+  "best_lambda": 1.0,
+  "best_threshold": 0.9578781146006892
+}
