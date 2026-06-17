@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -e
-cd /home/simonwesenick/Projects/ami-project
+export SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+cd "$SCRIPT_DIR"
 source .venv/bin/activate
 
 declare -A FILE_IDS=(
@@ -115,7 +116,7 @@ from collections import defaultdict
 import matplotlib; matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-ROOT         = Path("/home/simonwesenick/Projects/ami-project")
+ROOT         = Path(os.environ["SCRIPT_DIR"])
 VERIFIER_OUT = ROOT / "runs/verifier/rgb_v4"
 CROPS        = ROOT / "processed/fred_subset_v4/crops"
 CONF         = "0.20"
