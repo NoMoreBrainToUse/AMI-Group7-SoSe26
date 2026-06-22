@@ -1,0 +1,132 @@
+{
+  "name": "blind_test_v4",
+  "created": "2026-06-22T10:29:16.122916+00:00",
+  "sequences": [
+    "seq40",
+    "seq43",
+    "seq46",
+    "seq49"
+  ],
+  "splits": [
+    "train",
+    "val",
+    "test"
+  ],
+  "n_frames_total": 10762,
+  "n_frames_with_detections": 9892,
+  "n_detections_total": 14552,
+  "fusion_lambda": 1.0,
+  "fusion_threshold": 0.9578781146006892,
+  "conf": "0.20",
+  "metrics": {
+    "train": {
+      "event_yolo_conf0.25": {
+        "TP": 1807,
+        "FP": 114,
+        "FN": 11,
+        "precision": 0.9407,
+        "recall": 0.9939,
+        "f1": 0.9666
+      },
+      "event_yolo_conf0.50": {
+        "TP": 1715,
+        "FP": 55,
+        "FN": 103,
+        "precision": 0.9689,
+        "recall": 0.9433,
+        "f1": 0.956
+      },
+      "fusion_v4": {
+        "TP": 1644,
+        "FP": 31,
+        "FN": 174,
+        "precision": 0.9815,
+        "recall": 0.9043,
+        "f1": 0.9413
+      }
+    },
+    "val": {
+      "event_yolo_conf0.25": {
+        "TP": 1833,
+        "FP": 171,
+        "FN": 6,
+        "precision": 0.9147,
+        "recall": 0.9967,
+        "f1": 0.9539
+      },
+      "event_yolo_conf0.50": {
+        "TP": 1769,
+        "FP": 57,
+        "FN": 70,
+        "precision": 0.9688,
+        "recall": 0.9619,
+        "f1": 0.9653
+      },
+      "fusion_v4": {
+        "TP": 1663,
+        "FP": 10,
+        "FN": 176,
+        "precision": 0.994,
+        "recall": 0.9043,
+        "f1": 0.947
+      }
+    },
+    "test": {
+      "event_yolo_conf0.25": {
+        "TP": 9345,
+        "FP": 889,
+        "FN": 149,
+        "precision": 0.9131,
+        "recall": 0.9843,
+        "f1": 0.9474
+      },
+      "event_yolo_conf0.50": {
+        "TP": 8177,
+        "FP": 386,
+        "FN": 1317,
+        "precision": 0.9549,
+        "recall": 0.8613,
+        "f1": 0.9057
+      },
+      "fusion_v4": {
+        "TP": 9015,
+        "FP": 163,
+        "FN": 479,
+        "precision": 0.9822,
+        "recall": 0.9495,
+        "f1": 0.9656
+      }
+    },
+    "all": {
+      "event_yolo_conf0.25": {
+        "TP": 12985,
+        "FP": 1174,
+        "FN": 166,
+        "precision": 0.9171,
+        "recall": 0.9874,
+        "f1": 0.9509
+      },
+      "event_yolo_conf0.50": {
+        "TP": 11661,
+        "FP": 498,
+        "FN": 1490,
+        "precision": 0.959,
+        "recall": 0.8867,
+        "f1": 0.9215
+      },
+      "fusion_v4": {
+        "TP": 12322,
+        "FP": 204,
+        "FN": 829,
+        "precision": 0.9837,
+        "recall": 0.937,
+        "f1": 0.9598
+      }
+    }
+  },
+  "paths": {
+    "web_detections": "outputs/web/fusion_detections_blind_test_v4.jsonl",
+    "confusion_plot": "outputs/confusion_matrices_blind_test_v4.png",
+    "processed_root": "processed/fred_blind_test_v4"
+  }
+}

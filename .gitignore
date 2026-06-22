@@ -1,0 +1,46 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pt
+*.pth
+dataset/
+processed/
+logs/
+.DS_Store
+*.egg-info/
+dist/
+build/
+yolo11m.pt
+yolo26n.pt
+
+# Allow specific trained weights
+!ami-project/runs/event_yolo/fred_subset_v3_event_yolo11m/weights/best.pt
+!ami-project/runs/verifier/rgb_v3/mobilenet_v3_small/best.pt
+!ami-project/runs/verifier/rgb_v3/event_mobilenet_v3_small/best.pt
+!ami-project/runs/verifier/rgb_v4/efficientnet_b0/best.pt
+!ami-project/runs/verifier/rgb_v4/event_efficientnet_b0/best.pt
+!runs/event_yolo/fred_subset_v3_event_yolo11m/weights/best.pt
+!runs/verifier/rgb_v3/mobilenet_v3_small/best.pt
+!runs/verifier/rgb_v3/event_mobilenet_v3_small/best.pt
+!runs/verifier/rgb_v4/efficientnet_b0/best.pt
+!runs/verifier/rgb_v4/event_efficientnet_b0/best.pt
+
+# Training output directories (regenerable)
+runs/proposals/
+runs/detect/
+runs/rgb_yolo/
+runs/verifier/rgb_v3/
+runs/verifier/rgb_v4/blind_v4/
+
+# Output media (large, regenerable)
+outputs/videos/
+outputs/*.mp4
+outputs/*.gif
+
+# Legacy subprojects (not part of v4 pipeline)
+ami-project/
+yolo-fred/
+
+# Configs contain hardcoded absolute dataset paths — regenerate locally
+configs/
