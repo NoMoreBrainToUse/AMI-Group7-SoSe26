@@ -205,19 +205,34 @@ mounted as a Docker volume (see below).
 
 ## Data and image folder requirements
 
-Not committed — generated at runtime or mounted externally:
+Raw sequences go into `dataset/` and preprocessed images are written to `processed/`.
+Both directories are excluded from git — only a `.gitkeep` placeholder and
+`dataset/README.md` are tracked. See [`dataset/README.md`](dataset/README.md) for details.
 
-| Path | Source |
-|---|---|
-| `dataset/{40,43,46,49}/` | Downloaded from Google Drive (Phase 1) or Docker mount |
-| `processed/fred_blind_test_v4/` | Output of Phase 2 (preprocessing) |
-| `processed/.../crops/` | Output of Phase 4 (crop extraction) |
-| `runs/proposals/fred_blind_test_v4/` | Output of Phase 3 (event YOLO proposals) |
-| `runs/verifier/rgb_v4/blind_v4/` | Output of Phase 5 (verifier scoring) |
+| Path | Committed | Source |
+|---|---|---|
+| `dataset/` | `.gitkeep` + `README.md` only | — |
+| `dataset/{40,43,46,49}/` | NO | Downloaded from Google Drive or Docker-mounted |
+| `processed/` | `.gitkeep` only | — |
+| `processed/fred_blind_test_v4/` | NO | Output of Phase 2 (preprocessing, ~5 min) |
+| `processed/fred_blind_test_v4/rgb_yolo/images/` | NO | Source for JSONL `rgb_image` paths |
+| `processed/fred_blind_test_v4/event_yolo/images/` | NO | Source for JSONL `event_image` paths |
+| `processed/.../crops/` | NO | Output of Phase 4 (crop extraction) |
+| `runs/proposals/fred_blind_test_v4/` | NO | Output of Phase 3 (event YOLO proposals) |
+| `runs/verifier/rgb_v4/blind_v4/` | NO | Output of Phase 5 (verifier scoring) |
+
+The JSONL `rgb_image` and `event_image` paths are relative to the repo root and
+point into `processed/fred_blind_test_v4/`. Regenerate them with:
+
+```bash
+./run_blind_test_v4.sh --no-download   # if dataset/ is already populated
+./run_blind_test_v4.sh                 # downloads missing sequences first
+```
 
 ## Docker usage
 
-Mount the dataset and pass `--no-download` to skip gdown:
+Mount `dataset/` (raw sequences) and optionally `processed/` (to persist
+intermediate results across container runs), then pass `--no-download`:
 
 ```bash
 docker run --rm \

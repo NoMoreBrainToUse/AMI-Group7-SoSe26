@@ -4,8 +4,11 @@ __pycache__/
 *.pyo
 *.pt
 *.pth
-dataset/
-processed/
+dataset/*
+!dataset/.gitkeep
+!dataset/README.md
+processed/*
+!processed/.gitkeep
 logs/
 .DS_Store
 *.egg-info/
