@@ -15,6 +15,7 @@
   "n_frames_total": 10762,
   "n_frames_with_detections": 9892,
   "n_detections_total": 14552,
+  "fps": 30.0,
   "fusion_lambda": 1.0,
   "fusion_threshold": 0.9578781146006892,
   "conf": "0.20",

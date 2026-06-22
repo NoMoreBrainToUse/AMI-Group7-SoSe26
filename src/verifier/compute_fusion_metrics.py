@@ -131,6 +131,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--output-dir",     default=str(root / "outputs/web"))
     p.add_argument("--confusion-plot", default=str(root / "outputs/confusion_matrices_blind_test_v4.png"))
     p.add_argument("--name",    default="blind_test_v4")
+    p.add_argument("--fps",     type=float, default=30.0,
+                   help="Frames per second assumed for frame_index/timestamp_sec in the web JSONL.")
     p.add_argument("--overwrite", action="store_true", help="Recompute even if outputs exist.")
     return p
 
@@ -338,6 +340,7 @@ def main() -> int:
     n_frames_total = 0
     n_frames_with_dets = 0
     sequences: set[str] = set()
+    fps = args.fps
 
     with web_dets.open("w", encoding="utf-8") as fh:
         for split in splits:
@@ -379,6 +382,8 @@ def main() -> int:
                     "stem":          stem,
                     "split":         split,
                     "sequence":      sequence,
+                    "frame_index":   n_frames_total,
+                    "timestamp_sec": round(n_frames_total / fps, 6),
                     "rgb_image":     rgb_rel,
                     "event_image":   evt_rel,
                     "gt_boxes_norm": gt_boxes,
@@ -412,6 +417,7 @@ def main() -> int:
         "n_frames_total":         n_frames_total,
         "n_frames_with_detections": n_frames_with_dets,
         "n_detections_total":     len(flat),
+        "fps":                    fps,
         "fusion_lambda":          LAMBDA,
         "fusion_threshold":       THRESH,
         "conf":                   conf,
