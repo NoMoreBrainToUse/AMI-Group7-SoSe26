@@ -33,9 +33,11 @@ Each line is a JSON object for one frame. Frames with no detections are included
 
 ```jsonc
 {
-  "stem":     "seq40_011766549",       // unique frame identifier
-  "split":    "train",                 // train | val | test
-  "sequence": "seq40",                 // which blind sequence
+  "stem":          "seq40_011766549",  // unique frame identifier
+  "split":         "train",            // train | val | test
+  "sequence":      "seq40",            // which blind sequence
+  "frame_index":   42,                 // 0-based global position in the combined video
+  "timestamp_sec": 1.4,               // frame_index / 30.0 — seek target for video.currentTime
 
   // relative paths to the images (anchor: repo root)
   "rgb_image":   "processed/fred_blind_test_v4/rgb_yolo/images/train/seq40_011766549.jpg",

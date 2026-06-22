@@ -168,6 +168,8 @@ Each line in the JSONL file is one frame:
   "stem": "seq40_011766549",
   "split": "train",
   "sequence": "seq40",
+  "frame_index": 42,
+  "timestamp_sec": 1.4,
   "rgb_image":   "processed/fred_blind_test_v4/rgb_yolo/images/train/seq40_011766549.jpg",
   "event_image": "processed/fred_blind_test_v4/event_yolo/images/train/seq40_011766549.png",
   "gt_boxes_norm": [[0.983, 0.088, 0.032, 0.043]],
@@ -188,6 +190,8 @@ Each line in the JSONL file is one frame:
 ```
 
 **Key fields:**
+- `frame_index` — 0-based global position in the combined video (train → val → test, sorted by stem); use with `video.currentTime = frame_index / fps`
+- `timestamp_sec` — `frame_index / 30.0`; seek target for a 30 fps MP4 (range: 0 – 358.7 s)
 - `kept: true` — passed fusion threshold (0.9579); pipeline final verdict
 - `kept: false` — YOLO proposal rejected by the verifier
 - `bbox_xyxy` — pixel coordinates `[x1, y1, x2, y2]`
