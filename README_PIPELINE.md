@@ -33,7 +33,7 @@ pip install ultralytics torch torchvision efficientnet_pytorch opencv-python gdo
 
 Each phase is skipped if its outputs already exist. Pass `--overwrite` to rerun.
 
-## Training
+## Training(Documentation only, no need to run again, best weights already computed=
 
 > Pre-trained weights are already committed in `runs/`. Follow these steps only if retraining from scratch.
 
