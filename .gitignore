@@ -47,3 +47,5 @@ yolo-fred/
 
 # Configs contain hardcoded absolute dataset paths — regenerate locally
 configs/
+
+temp/
