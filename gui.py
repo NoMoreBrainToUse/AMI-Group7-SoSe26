@@ -34,6 +34,57 @@ def draw_boxes(frame, detections: list[dict], gt_boxes_norm: list[list[float]]) 
         x1, y1, x2, y2 = gt_norm_to_px(cx, cy, bw, bh)
         cv2.rectangle(frame, (x1, y1), (x2, y2), GT_COLOR, 2)
 
+def generate_video(jsonl_data, image_key, video_name, fps=30):
+    """
+    Creates a video from image paths stored in JSONL records.
+
+    Args:
+        jsonl_data (tuple | list): Sequence of dictionaries parsed from a JSONL file.
+        image_key (str): Key containing the image path.
+        video_name (str): Output video filename.
+        fps (int | float): Frames per second.
+    """
+    # Extract image paths
+    image_paths = [
+        record[image_key]
+        for record in jsonl_data
+        if image_key in record and os.path.exists(record[image_key])
+    ]
+
+    if not image_paths:
+        raise ValueError("No valid image paths found.")
+
+    # Read first image to determine frame size
+    frame = cv2.imread(image_paths[0])
+    if frame is None:
+        raise ValueError(f"Could not read image: {image_paths[0]}")
+
+    height, width = frame.shape[:2]
+
+    # Create video writer
+    video = cv2.VideoWriter(
+        video_name,
+        cv2.VideoWriter_fourcc('m', 'p', '4', 'v'),
+        fps,
+        (width, height),
+    )
+
+    # Add images to the video
+    for image_path in image_paths:
+        frame = cv2.imread(image_path)
+        if frame is None:
+            print(f"Skipping unreadable image: {image_path}")
+            continue
+
+        # Resize if necessary
+        if frame.shape[:2] != (height, width):
+            frame = cv2.resize(frame, (width, height))
+
+        video.write(frame)
+
+    video.release()
+    cv2.destroyAllWindows()
+
 def image_slider(img1_file, img2_file): # not really necessary now that we have image paths
     with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as f1:
             f1.write(img1_file.getvalue())
