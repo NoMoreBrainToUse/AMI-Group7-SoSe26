@@ -13,17 +13,32 @@ pip install ultralytics torch torchvision efficientnet_pytorch opencv-python gdo
 ## Quick start — Blind test evaluation
 
 ```bash
-./run_blind_test_v4.sh                  # full pipeline (blind seqs 40, 43, 46, 49)
-./run_blind_test_v4.sh --no-download    # skip download; data already on disk / Docker mount
-./run_blind_test_v4.sh --make-video     # also render result video
-./run_blind_test_v4.sh --overwrite      # force recompute all phases
+./run_blind_test_v4.sh                                    # run on seq 49 (default)
+./run_blind_test_v4.sh --seqs 40,43,46,49                 # reproduce old all-sequence output
+./run_blind_test_v4.sh --seqs 46,49 --no-download         # seq 46 + 49, data already on disk
+./run_blind_test_v4.sh --seqs 49 --plots                  # + 6-panel evaluation plot
+./run_blind_test_v4.sh --seqs 49 --make-video             # also render result video
+./run_blind_test_v4.sh --seqs 49 --dataset-dir /mnt/data --no-download  # external dataset
 ```
+
+**All phases always recompute** — output paths are fixed, so stale cache from a different
+sequence selection is never reused silently.
+
+## CLI arguments
+
+| Argument | Default | Description |
+|---|---|---|
+| `--seqs <seq1,seq2,...>` | `49` | Sequences to evaluate; all treated as test set |
+| `--dataset-dir <path>` | `dataset` | Root directory containing the sequence folders |
+| `--no-download` | off | Skip Google Drive downloads; raise error if data missing |
+| `--make-video` | off | Render fusion result video (slow, optional) |
+| `--plots` | off | Generate 6-panel evaluation plot (F1/Precision/Recall vs fusion threshold, PR curve, raw + normalized confusion matrix) |
 
 ## Pipeline phases
 
 | Phase | Script | Output |
 |---|---|---|
-| 1 Download | gdown | `dataset/{40,43,46,49}/` |
+| 1 Download | gdown | `dataset/<seqs>/` |
 | 2 Preprocess | `src/preprocessing/prepare_fred_yolo.py` | `processed/fred_blind_test_v4/` |
 | 3 Proposals | `src/verifier/export_proposals.py` | `runs/proposals/fred_blind_test_v4/detections_conf0.20_*.jsonl` |
 | 4 Crops | `src/verifier/extract_crops.py` | `processed/.../crops/*/crop_manifest_*.jsonl` |
@@ -31,7 +46,7 @@ pip install ultralytics torch torchvision efficientnet_pytorch opencv-python gdo
 | 6 Fusion | `src/verifier/compute_fusion_metrics.py` | `outputs/web/fusion_{manifest,detections}_blind_test_v4.{json,jsonl}` |
 | 7 Video *(optional)* | `src/visualization/render_fusion_video.py` | `outputs/videos/*.mp4` |
 
-Each phase is skipped if its outputs already exist. Pass `--overwrite` to rerun.
+All phases recompute on every run (overwrite is always active).
 
 ## Training(Documentation only, no need to run again, best weights already computed=
 
@@ -216,7 +231,7 @@ Both directories are excluded from git — only a `.gitkeep` placeholder and
 | Path | Committed | Source |
 |---|---|---|
 | `dataset/` | `.gitkeep` + `README.md` only | — |
-| `dataset/{40,43,46,49}/` | NO | Downloaded from Google Drive or Docker-mounted |
+| `dataset/<seqs>/` | NO | Downloaded from Google Drive or Docker-mounted |
 | `processed/` | `.gitkeep` only | — |
 | `processed/fred_blind_test_v4/` | NO | Output of Phase 2 (preprocessing, ~5 min) |
 | `processed/fred_blind_test_v4/rgb_yolo/images/` | NO | Source for JSONL `rgb_image` paths |

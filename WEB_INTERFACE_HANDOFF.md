@@ -5,14 +5,19 @@
 | File | Size | Purpose |
 |---|---|---|
 | `outputs/web/fusion_manifest_blind_test_v4.json` | 3 KB | Start here: metrics, thresholds, paths |
-| `outputs/web/fusion_detections_blind_test_v4.jsonl` | 7.1 MB | One JSON line per frame — all 10 762 frames |
+| `outputs/web/fusion_detections_blind_test_v4.jsonl` | varies | One JSON line per frame — regenerated for the current `--seqs` selection |
 | `outputs/confusion_matrices_blind_test_v4.png` | 64 KB | Pre-rendered confusion matrix (3 systems) |
 
 Images are served from the two directories below (not committed — see [Regenerating outputs](#regenerating-outputs)):
 ```
-processed/fred_blind_test_v4/rgb_yolo/images/{train,val,test}/*.jpg    1280×720 px
-processed/fred_blind_test_v4/event_yolo/images/{train,val,test}/*.png  1280×720 px
+processed/fred_blind_test_v4/rgb_yolo/images/test/*.jpg    1280×720 px
+processed/fred_blind_test_v4/event_yolo/images/test/*.png  1280×720 px
 ```
+
+> **Note:** The pipeline now treats all selected sequences as a single `test` split.
+> All image paths in the JSONL reference `images/test/` — there are no `train` or `val` subdirectories.
+> To reproduce the original all-sequence output (seq 40, 43, 46, 49), run:
+> `./run_blind_test_v4.sh --seqs 40,43,46,49`
 
 ---
 
@@ -34,14 +39,14 @@ Each line is a JSON object for one frame. Frames with no detections are included
 ```jsonc
 {
   "stem":          "seq40_011766549",  // unique frame identifier
-  "split":         "train",            // train | val | test
+  "split":         "test",             // always "test" in the current pipeline
   "sequence":      "seq40",            // which blind sequence
   "frame_index":   42,                 // 0-based global position in the combined video
   "timestamp_sec": 1.4,               // frame_index / 30.0 — seek target for video.currentTime
 
   // relative paths to the images (anchor: repo root)
-  "rgb_image":   "processed/fred_blind_test_v4/rgb_yolo/images/train/seq40_011766549.jpg",
-  "event_image": "processed/fred_blind_test_v4/event_yolo/images/train/seq40_011766549.png",
+  "rgb_image":   "processed/fred_blind_test_v4/rgb_yolo/images/test/seq49_011766549.jpg",
+  "event_image": "processed/fred_blind_test_v4/event_yolo/images/test/seq49_011766549.png",
 
   // ground-truth boxes: normalized YOLO format [cx, cy, w, h]
   // multiply cx/w by image width (1280) and cy/h by image height (720) to get pixels
@@ -81,13 +86,25 @@ The threshold (0.9579) and lambda (1.0) were tuned on the held-out validation se
 
 ## Sequence → split mapping
 
-| Split | Sequence | Frames |
-|---|---|---|
-| `train` | `seq40` | 2 147 |
-| `val` | `seq43` | 2 135 |
-| `test` | `seq46`, `seq49` | 6 480 |
+All sequences selected via `--seqs` are treated as a single `test` split.
 
-All four sequences were **never seen during training**.
+Default run (`--seqs 49`):
+
+| Split | Sequence |
+|---|---|
+| `test` | `seq49` |
+
+To reproduce the original all-sequence output:
+
+```bash
+./run_blind_test_v4.sh --seqs 40,43,46,49
+```
+
+| Split | Sequence |
+|---|---|
+| `test` | `seq40`, `seq43`, `seq46`, `seq49` |
+
+All sequences were **never seen during training**.
 
 ---
 
@@ -99,7 +116,7 @@ All four sequences were **never seen during training**.
 | Event YOLO conf ≥ 0.50 | 95.9 % | 88.7 % | 92.2 % |
 | **Fusion v4 (this pipeline)** | **98.4 %** | **93.7 %** | **96.0 %** |
 
-Per-split metrics are available under `metrics.train`, `metrics.val`, `metrics.test` in the manifest.
+Per-split metrics are available under `metrics.test` (and `metrics.all`) in the manifest.
 
 ---
 
@@ -142,22 +159,23 @@ All outputs are produced by:
 
 ```bash
 cd ami-project
-./run_blind_test_v4.sh            # full pipeline, no video
-./run_blind_test_v4.sh --make-video   # also renders the mp4
-./run_blind_test_v4.sh --no-download  # skip Google Drive (data already mounted)
-./run_blind_test_v4.sh --overwrite    # force recompute everything
+./run_blind_test_v4.sh                          # seq 49 (default)
+./run_blind_test_v4.sh --seqs 40,43,46,49       # all four sequences
+./run_blind_test_v4.sh --seqs 46,49 --no-download  # skip download
+./run_blind_test_v4.sh --seqs 49 --plots        # + 6-panel evaluation plot
+./run_blind_test_v4.sh --seqs 49 --make-video   # also renders the mp4
 ```
+
+All phases always recompute — no caching, no `--overwrite` flag needed.
 
 Phases and what they produce:
 
-| Phase | Script | Skipped if… |
+| Phase | Script | Output |
 |---|---|---|
-| 1 — Download | `gdown` | sequence dir exists |
-| 2 — Preprocess | `src/preprocessing/prepare_fred_yolo.py` | always runs |
-| 3 — Proposals | `src/verifier/export_proposals.py` | `runs/proposals/fred_blind_test_v4/detections_conf0.20_*.jsonl` exist |
-| 4 — Crops | `src/verifier/extract_crops.py` | `processed/.../crops/*/crop_manifest_*.jsonl` exist |
-| 5 — Score | `src/verifier/eval_verifier.py` | `runs/verifier/rgb_v4/blind_v4/scored_*.jsonl` exist |
-| 6 — Fusion + web | `src/verifier/compute_fusion_metrics.py` | `outputs/web/fusion_*` exist |
+| 1 — Download | `gdown` | `dataset/<seqs>/` (skipped if dir already exists) |
+| 2 — Preprocess | `src/preprocessing/prepare_fred_yolo.py` | `processed/fred_blind_test_v4/` |
+| 3 — Proposals | `src/verifier/export_proposals.py` | `runs/proposals/fred_blind_test_v4/detections_conf0.20_test.jsonl` |
+| 4 — Crops | `src/verifier/extract_crops.py` | `processed/.../crops/*/crop_manifest_*_test_*.jsonl` |
+| 5 — Score | `src/verifier/eval_verifier.py` | `runs/verifier/rgb_v4/blind_v4/scored_*_test_*.jsonl` |
+| 6 — Fusion + web | `src/verifier/compute_fusion_metrics.py` | `outputs/web/fusion_*` |
 | 7 — Video | `src/visualization/render_fusion_video.py` | only runs with `--make-video` |
-
-Pass `--overwrite` to rerun any phase that would otherwise be skipped.

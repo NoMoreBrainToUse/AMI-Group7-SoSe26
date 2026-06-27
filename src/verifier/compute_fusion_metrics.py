@@ -117,6 +117,99 @@ def metrics_for_subset(dets: list[dict], fusion_threshold: float) -> dict:
     }
 
 
+def generate_curve_plot(flat: list[dict], fusion_threshold: float, plot_path: Path) -> None:
+    """6-panel evaluation plot: F1/Precision/Recall vs fusion threshold, PR curve, raw+norm CM."""
+    try:
+        import numpy as np
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except ImportError as exc:
+        print(f"WARNING: skipping curve plot ({exc})", file=sys.stderr)
+        return
+
+    scores = [d["fusion_score"] for d in flat]
+    labels = [d["label"] for d in flat]
+
+    thresholds = sorted({round(s, 4) for s in scores})
+    precisions, recalls, f1s = [], [], []
+    for t in thresholds:
+        TP = sum(1 for s, l in zip(scores, labels) if s >= t and l == 1)
+        FP = sum(1 for s, l in zip(scores, labels) if s >= t and l == 0)
+        FN = sum(1 for s, l in zip(scores, labels) if s < t and l == 1)
+        prec = TP / (TP + FP) if TP + FP > 0 else 0.0
+        rec  = TP / (TP + FN) if TP + FN > 0 else 0.0
+        f1   = 2 * prec * rec / (prec + rec) if prec + rec > 0 else 0.0
+        precisions.append(prec)
+        recalls.append(rec)
+        f1s.append(f1)
+
+    TP = sum(1 for s, l in zip(scores, labels) if s >= fusion_threshold and l == 1)
+    FP = sum(1 for s, l in zip(scores, labels) if s >= fusion_threshold and l == 0)
+    FN = sum(1 for s, l in zip(scores, labels) if s < fusion_threshold and l == 1)
+    mat = np.array([[TP, FN], [FP, 0]])
+    row_sums = mat.sum(axis=1, keepdims=True)
+    mat_norm = np.where(row_sums > 0, mat / row_sums, 0.0)
+
+    fig, axes = plt.subplots(2, 3, figsize=(16, 10))
+    fig.suptitle("Fusion Evaluation — score threshold sweep", fontsize=14, fontweight="bold")
+
+    # Row 0: threshold curves
+    for ax, values, ylabel, color in [
+        (axes[0, 0], f1s,        "F1",        "steelblue"),
+        (axes[0, 1], precisions, "Precision", "seagreen"),
+        (axes[0, 2], recalls,    "Recall",    "darkorange"),
+    ]:
+        ax.plot(thresholds, values, color=color, linewidth=1.5)
+        ax.axvline(fusion_threshold, color="red", linestyle="--", linewidth=1,
+                   label=f"t={fusion_threshold:.3f}")
+        ax.set_xlabel("Fusion score threshold")
+        ax.set_ylabel(ylabel)
+        ax.set_title(f"{ylabel} – Fusion score threshold")
+        ax.set_xlim([0, 1])
+        ax.set_ylim([0, 1])
+        ax.legend(fontsize=8)
+
+    # Row 1, col 0: Precision–Recall curve
+    axes[1, 0].plot(recalls, precisions, color="purple", linewidth=1.5)
+    axes[1, 0].set_xlabel("Recall")
+    axes[1, 0].set_ylabel("Precision")
+    axes[1, 0].set_title("Precision–Recall")
+    axes[1, 0].set_xlim([0, 1])
+    axes[1, 0].set_ylim([0, 1])
+
+    tick_labels = ["Pred Pos", "Pred Neg"]
+    ytick_labels = ["GT Pos", "GT Neg"]
+
+    # Row 1, col 1: raw confusion matrix
+    axes[1, 1].imshow(mat, cmap="Blues")
+    axes[1, 1].set_xticks([0, 1]); axes[1, 1].set_xticklabels(tick_labels)
+    axes[1, 1].set_yticks([0, 1]); axes[1, 1].set_yticklabels(ytick_labels)
+    for i in range(2):
+        for j in range(2):
+            axes[1, 1].text(j, i, str(mat[i, j]), ha="center", va="center",
+                            fontsize=12,
+                            color="white" if mat[i, j] > mat.max() * 0.5 else "black")
+    axes[1, 1].set_title(f"Confusion Matrix  (t={fusion_threshold:.3f})")
+
+    # Row 1, col 2: normalized confusion matrix
+    axes[1, 2].imshow(mat_norm, cmap="Blues", vmin=0, vmax=1)
+    axes[1, 2].set_xticks([0, 1]); axes[1, 2].set_xticklabels(tick_labels)
+    axes[1, 2].set_yticks([0, 1]); axes[1, 2].set_yticklabels(ytick_labels)
+    for i in range(2):
+        for j in range(2):
+            axes[1, 2].text(j, i, f"{mat_norm[i, j]:.2f}", ha="center", va="center",
+                            fontsize=12,
+                            color="white" if mat_norm[i, j] > 0.5 else "black")
+    axes[1, 2].set_title(f"Normalized Confusion Matrix  (t={fusion_threshold:.3f})")
+
+    plt.tight_layout()
+    plot_path.parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(str(plot_path), dpi=150, bbox_inches="tight")
+    plt.close()
+    print(f"Curve plot: {plot_path}")
+
+
 def build_parser() -> argparse.ArgumentParser:
     root = repo_root()
     p = argparse.ArgumentParser(
@@ -134,6 +227,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--fps",     type=float, default=30.0,
                    help="Frames per second assumed for frame_index/timestamp_sec in the web JSONL.")
     p.add_argument("--overwrite", action="store_true", help="Recompute even if outputs exist.")
+    p.add_argument("--curve-plot", default=None,
+                   help="If set, generate a 6-panel evaluation plot (PNG) at this path. "
+                        "Panels: F1/Precision/Recall vs fusion score threshold, PR curve, "
+                        "confusion matrix (raw + normalized).")
     return p
 
 
@@ -317,6 +414,10 @@ def main() -> int:
     except ImportError as exc:
         print(f"WARNING: skipping confusion plot ({exc})", file=sys.stderr)
         plot_path = None
+
+    # Optional 6-panel curve plot
+    if args.curve_plot:
+        generate_curve_plot(flat, THRESH, resolve_path(args.curve_plot, root))
 
     # Group detections by stem for the web JSONL
     stem_dets: dict[str, list[dict]] = defaultdict(list)
