@@ -23,7 +23,7 @@ as a final summary.
 | Horizon weights | 1/3, 1/3, 1/3 (equal) |
 | Rolling-average weight `W_AVG` | 1 |
 | Final-frame weight `W_FINAL` | 0 |
-| Detection source | Event_YOLO_new |
+| Detection source | Event_YOLO_new — YOLO11 detections based on event camera data |
 | Detection assignment radius | 150 px |
 
 The optimizer compares future KF predictions to **actual YOLO_new detections** (not
@@ -90,8 +90,8 @@ This warm-starts the next optimization run from the current best solution.
 
 Each training/test video folder must contain:
 - `interpolated_coordinates.txt` — ground-truth bounding boxes with track IDs
-- `Event_YOLO_new/` — per-frame YOLO detection `.txt` files
-  (format: `class cx cy w h [confidence]`, normalized coordinates)
+- `Event_YOLO_new/` — per-frame YOLO11 detection `.txt` files produced from event
+  camera data (format: `class cx cy w h [confidence]`, normalized coordinates)
 
 The optimizer resolves detection–track assignments using Hungarian matching with a
 150 px radius gate, so each YOLO detection is assigned to at most one GT track per
