@@ -11,6 +11,7 @@ DATASET_DIR="dataset"
 MAKE_VIDEO=false
 NO_DOWNLOAD=false
 PLOTS=false
+CLEAN=false
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -19,6 +20,7 @@ while [[ $# -gt 0 ]]; do
     --make-video)  MAKE_VIDEO=true;  shift   ;;
     --no-download) NO_DOWNLOAD=true; shift   ;;
     --plots)       PLOTS=true;       shift   ;;
+    --clean)       CLEAN=true;       shift   ;;
     --help|-h)
       echo "Usage: $0 [OPTIONS]"
       echo ""
@@ -27,6 +29,7 @@ while [[ $# -gt 0 ]]; do
       echo "  --make-video             Also render the fusion result video (slow; optional)"
       echo "  --no-download            Skip Google Drive downloads; raise error if data missing"
       echo "  --plots                  Generate 6-panel curve plot (F1/Precision/Recall/PR/CM)"
+      echo "  --clean                  Remove all processed/proposals/crops before running (ensures metrics are for the specified seqs only)"
       echo ""
       echo "Examples:"
       echo "  $0                                    # run on seq 49 (default)"
@@ -35,6 +38,7 @@ while [[ $# -gt 0 ]]; do
       echo "  $0 --seqs 49 --no-download            # skip download, data already on disk"
       echo "  $0 --seqs 49 --dataset-dir /mnt/data --no-download"
       echo "  $0 --seqs 46,49 --plots               # include 6-panel evaluation plot"
+      echo "  $0 --seqs 140 --clean                 # clean previous results, evaluate seq 140 only"
       exit 0
       ;;
     *) echo "Unknown argument: $1" >&2; exit 1 ;;
@@ -77,6 +81,7 @@ declare -A FILE_IDS=(
   [43]="18ltdRfkG0PJ1d76ZD1Kirr3YZQ7-bKRY"
   [46]="19X9QIaBO_z-MXxcu0blep9Il1fiZkowu"
   [49]="12rBd8eRLPw07WIRKnu_LY2AeeP46FAzU"
+  [140]="11i26Xt04NCVpZ59xfHKkOAImB87945N3"
 )
 
 EVENT_MODEL="runs/event_yolo/fred_subset_v3_event_yolo11m/weights/best.pt"
@@ -134,6 +139,18 @@ phase_end
 # ---------------------------------------------------------------------------
 # PHASE 2: Preprocess (all seqs as test)
 # ---------------------------------------------------------------------------
+if $CLEAN; then
+  echo ""
+  echo "=== --clean: removing stale processed/proposals/crops ==="
+  rm -rf "$OUTROOT/event_yolo/images/test" \
+         "$OUTROOT/event_yolo/labels/test" \
+         "$OUTROOT/rgb_yolo/images/test"   \
+         "$OUTROOT/rgb_yolo/labels/test"   \
+         "$PROPOSALS"                       \
+         "$CROPS"
+  echo "  Done."
+fi
+
 phase_start "PHASE 2: Preprocess (all seqs as test)"
 python src/preprocessing/prepare_fred_yolo.py \
   --dataset-root "$DATASET_DIR" \
