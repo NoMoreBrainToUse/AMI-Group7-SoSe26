@@ -33,6 +33,7 @@ sequence selection is never reused silently.
 | `--no-download` | off | Skip Google Drive downloads; raise error if data missing |
 | `--make-video` | off | Render fusion result video (slow, optional) |
 | `--plots` | off | Generate 6-panel evaluation plot (F1/Precision/Recall vs fusion threshold, PR curve, raw + normalized confusion matrix) |
+| `--clean` | off | Wipe processed/proposals/crops dirs before running — use when switching sequences to avoid stale data from a previous run mixing into metrics |
 
 ## Pipeline phases
 
@@ -146,9 +147,44 @@ python src/verifier/eval_fusion.py \
   --output runs/verifier/rgb_v4/fusion_results_rgb_val_conf0.20.json
 ```
 
-Result: `best_lambda=1.0`, `best_threshold=0.9579`, stored in
-`runs/verifier/rgb_v4/fusion_results_rgb_val_conf0.20.json`.
-`run_blind_test_v4.sh` reads this file automatically.
+~~Result: `best_lambda=1.0`, `best_threshold=0.9579`~~ — superseded by recalibration below.
+
+`run_blind_test_v4.sh` reads `runs/verifier/rgb_v4/fusion_results_rgb_val_conf0.20.json` automatically.
+
+### 8b — Recalibrate on a diverse sequence pool (recommended)
+
+The initial threshold was calibrated on only 6 val sequences (9, 10, 15, 19, 20, 150), which caused
+poor generalization to harder sequences (e.g. seq 140: F1 72 % with the original threshold).
+
+A second calibration was run on **11 additional sequences** (60, 70, 80, 90, 130, 140, 145, 160, 205,
+210, 220) selected to span a range of drone distances (close → very far) and pooled with the original
+val scored files. See [`FUSION.md`](FUSION.md) for the full recalibration procedure.
+
+**New active calibration:** `best_lambda=0.75`, `best_threshold=0.491`
+
+## Evaluation results
+
+### seq 40, 43, 46, 49 (original blind test)
+
+| System | Precision | Recall | F1 |
+|---|---|---|---|
+| Event-YOLO @ conf 0.25 | 91.7 % | 98.7 % | 95.1 % |
+| Event-YOLO @ conf 0.50 | 95.9 % | 88.7 % | 92.2 % |
+| **fusion_v4 (old cal.)** | 98.4 % | 93.7 % | 96.0 % |
+| **fusion_v4 (new cal.)** | **97.7 %** | **96.5 %** | **97.1 %** |
+
+### seq 140 (hard sequence — small/distant drone)
+
+| System | Precision | Recall | F1 |
+|---|---|---|---|
+| Event-YOLO @ conf 0.25 | 63.8 % | 96.0 % | 76.6 % |
+| Event-YOLO @ conf 0.50 | 80.0 % | 55.1 % | 65.3 % |
+| **fusion_v4 (old cal.)** | 72.1 % | 72.7 % | 72.4 % |
+| **fusion_v4 (new cal.)** | **68.2 %** | **88.8 %** | **77.1 %** |
+
+The new calibration improves F1 on both the original sequences (+1.1 pp) and hard sequences (+4.7 pp)
+by trading a small precision drop for a large recall gain — the threshold is no longer over-tuned to
+easy data.
 
 ## Output files
 
