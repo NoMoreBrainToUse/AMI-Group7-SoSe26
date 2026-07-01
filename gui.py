@@ -6,6 +6,7 @@ import cv2
 import time
 import os
 from streamlit_super_slider import st_slider
+import zipfile
 
 GT_COLOR   = (0,255,0)
 KEPT_COLOR = (0,255,255)
@@ -117,12 +118,27 @@ st.write("<- open sidebar to start")
 # --- SIDEBAR ---
 st.sidebar.title("Hybrid Vision - Group 7")
 st.sidebar.header("Step 1 - Data Import")
+UPLOAD_DIR = "dataset"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+uploaded_zip = st.sidebar.file_uploader("Upload a ZIP file", type=["zip"])
+if st.sidebar.button("Unzip"):
+    if uploaded_zip is not None:
+        st.sidebar.success("ZIP file uploaded successfully!")
 
-uploaded_files = st.sidebar.file_uploader(
-    "Upload dataset", accept_multiple_files="directory", type=["zip"]
-)
-if uploaded_files:
-    st.session_state["dataset"] = uploaded_files
+        # Save ZIP file permanently
+        zip_path = os.path.join(UPLOAD_DIR, uploaded_zip.name)
+        with open(zip_path, "wb") as f:
+            f.write(uploaded_zip.getbuffer())
+
+        # Extract ZIP
+        with zipfile.ZipFile(zip_path, "r") as zip_ref:
+            zip_ref.extractall(UPLOAD_DIR)
+        # Delete ZIP file after extraction
+        os.remove(zip_path)
+        st.info(f"Deleted ZIP file: {zip_path}")
+
+if uploaded_zip:
+    st.session_state["dataset"] = zip_path
     # st.sidebar.success(f"{len(uploaded_files)} frames uploaded")
 
 st.sidebar.header("Step 2 - Run Model")
