@@ -3,7 +3,9 @@ import tempfile
 from streamlit_image_comparison import image_comparison
 import json 
 import cv2
+import time
 import os
+from streamlit_super_slider import st_slider
 
 GT_COLOR   = (0,255,0)
 KEPT_COLOR = (0,255,255)
@@ -146,7 +148,7 @@ number_of_frames=len(processed_data)
 
 # --- TOP MENU ---
 tabs = st.tabs([
-    "Dashboard", "Side-by-Side", "As a video", "Example"
+    "Dashboard", "Side-by-Side", "As a video", "confusion matrices", "Example"
 ])
 
 # --- DASHBOARD TAB ---
@@ -155,11 +157,9 @@ with tabs[0]:
 
     col1,col2=st.columns(2)
     with col1:
-        selected = st.slider(
-            "Select frame",
+        selected = st_slider(
             min_value=0,
             max_value=len(processed_data) - 1,
-            value=0,
             key='dashboard'
         )
         # Let user pick which image to view
@@ -180,13 +180,12 @@ with tabs[0]:
             make_responsive=True,
         )
 
+
 with tabs[1]:
     st.subheader("Here you can see the detections of the model for both event and rgb detections")
-    selected = st.slider(
-        "Select frame",
+    selected = st_slider(
         min_value=0,
         max_value=len(processed_data) - 1,
-        value=0,
         key='side'
     )
 
@@ -198,12 +197,16 @@ with tabs[1]:
 
     col1,col2=st.columns(2)
     with col1:
-        st.write('RGB frames')
+        st.write('event frames')
         st.image(event_frame)
     with col2:
-        st.write('Event frames')
+        st.write('rgb frames')
         st.image(rgb_frame)
     st.write('here we write what the colors mean')
 
 with tabs[3]:
+    st.subheader("confusion matrices")
+    st.image('outputs/confusion_matrices_blind_test_v4.png')
+
+with tabs[4]:
     st.write('decide what data to keep in the repository as an example')
