@@ -1,0 +1,4 @@
+# Streamlit config for gui.py (picked up automatically by `streamlit run`).
+[server]
+# Default is 200 MB; our dataset ZIPs are 1-2 GB+.
+maxUploadSize = 4096

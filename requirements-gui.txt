@@ -1,0 +1,10 @@
+# GUI (Streamlit web interface) dependencies — pinned to a known-good set.
+# Install into a venv:  python3 -m venv .venv && .venv/bin/pip install -r requirements-gui.txt
+# NOTE: these are ONLY the deps for gui.py. The ML pipeline (run_blind_test_v4.sh)
+# has its own heavier deps — see README_PIPELINE.md ("Prerequisites").
+streamlit==1.58.0
+streamlit-image-comparison==0.0.4
+streamlit-super-slider==0.2.0
+opencv-python==4.13.0.92
+scikit-image==0.26.0
+imagecodecs==2026.6.26
