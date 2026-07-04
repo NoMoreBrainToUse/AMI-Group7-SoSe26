@@ -8,6 +8,8 @@ import threading
 from functools import partial
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 
+from src.preprocessing.preprocess_zip import preprocess_zip
+
 GT_COLOR   = (0,255,0)
 KEPT_COLOR = (0,255,255)
 REJ_COLOR  = (255,0,0)
@@ -89,15 +91,7 @@ def generate_video(jsonl_data, image_key, video_name, fps=30):
     cv2.destroyAllWindows()
 
 PROCESSED_DIR = "processed"
-
-def list_datasets(processed_dir=PROCESSED_DIR):
-    """Datasets in processed/ that contain aligned frames under matched/."""
-    if not os.path.isdir(processed_dir):
-        return []
-    return sorted(
-        d for d in os.listdir(processed_dir)
-        if os.path.isdir(os.path.join(processed_dir, d, "matched"))
-    )
+DATASET_DIR = "dataset"
 
 def dataset_frame_paths(dataset, stream, processed_dir=PROCESSED_DIR):
     """Sorted aligned frame paths for one processed dataset. stream is "rgb" or "event"."""
@@ -116,7 +110,7 @@ def dataset_frame_paths(dataset, stream, processed_dir=PROCESSED_DIR):
         )
     return paths
 
-# --- DATASET PLAYER (Dashboard tab) ---
+# --- DATASET PLAYER (Preview tab) ---
 # Frames are served to the browser by a tiny HTTP server on this port, because
 # the player is a client-side component that loads frames by URL (Streamlit's
 # own static serving cannot reach processed/ outside its ./static root).
@@ -384,7 +378,7 @@ def image_slider(img1_file, img2_file): # not really necessary now that we have 
 
 st.set_page_config(page_title="Applied Machine Intelligence Project - Group 7", layout="wide")
 
-start_frame_server()  # serves processed/ frames to the Dashboard player
+start_frame_server()  # serves processed/ frames to the Preview player
 
 st.title("Hybrid Vision - Group 7")
 st.write("Web interface to show project results")
@@ -393,25 +387,36 @@ st.write("<- open sidebar to start")
 # --- SIDEBAR ---
 st.sidebar.title("Hybrid Vision - Group 7")
 st.sidebar.header("Step 1 - Data Import")
-available_datasets = list_datasets()
-if available_datasets:
-    dataset_choice = st.sidebar.selectbox(
-        "Select a processed dataset",
-        available_datasets,
-        index=None,
-        placeholder="Choose a dataset...",
-    )
+uploaded_zip = st.sidebar.file_uploader("Upload a sequence zip", type="zip")
+if uploaded_zip is not None:
+    os.makedirs(DATASET_DIR, exist_ok=True)
+    zip_choice = uploaded_zip.name
+    upload_dest = os.path.join(DATASET_DIR, zip_choice)
+    if not os.path.exists(upload_dest):
+        with open(upload_dest, "wb") as f:
+            f.write(uploaded_zip.getbuffer())
+    st.sidebar.caption(f"Ready: {zip_choice}")
 else:
-    dataset_choice = None
-    st.sidebar.warning(f"No datasets with aligned frames found in {PROCESSED_DIR}/")
+    zip_choice = None
 
-st.sidebar.header("Step 2 - Run Model")
-# The choice in Step 1 is only loaded once Run is pressed.
-if st.sidebar.button("Run"):
-    if dataset_choice is None:
-        st.sidebar.warning("Select a dataset in Step 1 first.")
+st.sidebar.header("Step 2 - Preprocessing")
+# The zip chosen in Step 1 is only extracted and aligned once Process is pressed.
+if st.sidebar.button("Process"):
+    if zip_choice is None:
+        st.sidebar.warning("Upload a zip file in Step 1 first.")
     else:
-        st.session_state["dataset"] = dataset_choice
+        with st.spinner(f"Preprocessing {zip_choice} (extract + align RGB/event frames)..."):
+            try:
+                dataset_name, _ = preprocess_zip(
+                    os.path.join(DATASET_DIR, zip_choice),
+                    dataset_root=DATASET_DIR,
+                    processed_root=PROCESSED_DIR,
+                    progress=lambda msg: None,
+                )
+            except Exception as e:
+                st.sidebar.error(f"Preprocessing failed: {e}")
+            else:
+                st.session_state["dataset"] = dataset_name
 selected_dataset = st.session_state.get("dataset")
 if selected_dataset is not None:
     st.sidebar.caption(f"Loaded: {selected_dataset}")
@@ -457,14 +462,14 @@ BLIND_TEST_MANIFEST = "outputs/web/fusion_manifest_blind_test_v4.json"
 
 # --- TOP MENU ---
 tabs = st.tabs([
-    "Dashboard", "Side-by-Side", "As a video", "confusion matrices", "Example"
+    "Preview", "Side-by-Side", "As a video", "confusion matrices", "Example"
 ])
 
-# --- DASHBOARD TAB ---
+# --- PREVIEW TAB ---
 with tabs[0]:
     st.subheader("Preview a dataset")
     if selected_dataset is None:
-        st.info("Select a dataset in the sidebar (Step 1) and press Run (Step 2) to load it.")
+        st.info("Select a zip in the sidebar (Step 1) and press Process (Step 2) to load it.")
     else:
         rgb_frames = dataset_frame_paths(selected_dataset, "rgb")
         event_frames = dataset_frame_paths(selected_dataset, "event")
