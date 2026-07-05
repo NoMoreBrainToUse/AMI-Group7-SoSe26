@@ -777,14 +777,6 @@ with tabs[1]:
                     "drag on the image to wipe between RGB and Event."
                 )
                 render_dataset_player(rgb_paths[:n_pairs], evt_paths[:n_pairs])
-                st.write(
-                    ":green[Green box] = kept detection, "
-                    ":orange[Orange dot] = current ground-truth position, "
-                    ":red[Red trail] = ground-truth future path (0.8 s), "
-                    ":violet[Magenta dot] = tentative track (warming up), "
-                    "colored dot + trail = active Kalman track with its "
-                    "predicted trajectory and speed label."
-                )
             else:
                 st.info(
                     f"Tracking frames for {seq} have not been rendered yet. "
