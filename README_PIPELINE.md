@@ -165,7 +165,7 @@ Step 3 — pick a visualization tab.
 |---|---|
 | **Preview** | Client-side frame player for the processed dataset: play/pause, seekable progress bar, adjustable fps, drag on the image to wipe between RGB and Event |
 | **Tracking** | Kalman-filter tracking visualization for the processed dataset (see below) |
-| **Results** | Blind-test model detections, event and RGB side by side, with GT / kept / rejected boxes |
+| **Fusion** | Blind-test model detections, event and RGB side by side, with GT / kept / rejected boxes |
 | **confusion matrices** | Styled per-split confusion matrices + P/R/F1 from the fusion manifest |
 
 ### Tracking tab

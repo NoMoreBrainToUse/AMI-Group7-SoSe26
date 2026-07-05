@@ -714,7 +714,7 @@ BLIND_TEST_MANIFEST = "outputs/web/fusion_manifest_blind_test_v4.json"
 
 # --- TOP MENU ---
 tabs = st.tabs([
-    "Preview", "Tracking", "Results", "confusion matrices", "Example"
+    "Preview", "Tracking", "Fusion", "confusion matrices", "Example"
 ])
 
 # --- PREVIEW TAB ---
