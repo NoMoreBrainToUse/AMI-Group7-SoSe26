@@ -8,3 +8,5 @@ streamlit-super-slider==0.2.0
 opencv-python==4.13.0.92
 scikit-image==0.26.0
 imagecodecs==2026.6.26
+# tracking visualization (Tracking tab)
+scipy==1.17.1

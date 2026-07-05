@@ -3,16 +3,48 @@ import tempfile
 from streamlit_image_comparison import image_comparison
 import json
 import cv2
+import numpy as np
 import os
+import re
 import threading
+from collections import defaultdict
 from functools import partial
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 
 from src.preprocessing.preprocess_zip import preprocess_zip
+from CA_Meas_kalman_new import MultiDroneTracker
 
 GT_COLOR   = (0,255,0)
 KEPT_COLOR = (0,255,255)
 REJ_COLOR  = (255,0,0)
+
+# --- Tracking visualization (Kalman-filter trajectory videos) ---
+FUTURE_FRAMES = 24   # 0.8 s at 30 fps
+IMG_W, IMG_H  = 1280, 720
+
+# colours (BGR)
+C_BOX        = (  0, 220,   0)   # green  — Event_YOLO_new detection box
+C_TENT       = (200,  50, 200)   # magenta — tentative track dot
+C_GT_CURRENT = (  0,  80, 255)   # orange-red — current GT position
+# GT future colours per GT track ID (red family)
+GT_COLORS = [
+    (  0,  50, 220),   # red
+    (  0, 100, 180),   # darker orange-red
+    (  0,  30, 160),   # deep red
+    ( 30,  70, 200),   # brownish red
+]
+# KF active-track colours per assigned track ID (bright, distinct)
+TRACK_COLORS = [
+    (255, 120,   0),   # blue
+    (  0, 165, 255),   # orange
+    (180,  20, 255),   # purple
+    (  0, 220, 220),   # yellow-green
+    (128, 255,   0),   # lime
+]
+
+FONT       = cv2.FONT_HERSHEY_SIMPLEX
+FONT_SCALE = 0.45
+FONT_THICK = 1
 
 # --- HELPER FUNCTIONS ---
 def gt_norm_to_px(cx, cy, w, h, img_w=1280, img_h=720):
@@ -90,8 +122,228 @@ def generate_video(jsonl_data, image_key, video_name, fps=30):
     video.release()
     cv2.destroyAllWindows()
 
+# --- TRACKING VISUALIZATION (Tracking tab) ---
+def make_tracker():
+    """Fresh MultiDroneTracker with the tuned blind-test parameters.
+    The tracker is stateful across step() calls, so each video pass
+    needs its own instance."""
+    return MultiDroneTracker(
+        dt          = 1/30,   # seconds per frame (30 fps)
+        Q_base      = np.diag([11.442, 11.442, 0.00036198, 0.00036198, 2.8337, 2.8337]),
+        R_pos       = np.diag([1.6883,  1.6883]),
+        R_vel       = np.diag([0.35511, 0.35511]),
+        R_acc       = np.diag([10.408,  10.408]),
+        alpha       = 0.95221,   # acceleration decay over prediction horizon
+        beta        = 0.96737,   # velocity decay over prediction horizon
+        acc_coeffs  = [-0.13303, 0.52543, 4.0978],  # R_acc polynomial coefficients
+        g_max       = 483.51,
+        future_frames = FUTURE_FRAMES,
+    )
+
+def draw_trajectory(frame, pts, colour, radius=3, thickness=2):
+    pts = [p for p in pts if 0 <= p[0] <= IMG_W and 0 <= p[1] <= IMG_H]
+    if not pts:
+        return
+    for p in pts:
+        cv2.circle(frame, (int(p[0]), int(p[1])), radius, colour, -1)
+    for a, b in zip(pts[:-1], pts[1:]):
+        cv2.line(frame, (int(a[0]), int(a[1])), (int(b[0]), int(b[1])), colour, thickness)
+
+def gt_future_pts(gt_ts, gt_pos, ts_now, dt, n_frames):
+    """Return list of GT positions for the next n_frames steps from ts_now."""
+    pts = []
+    for k in range(1, n_frames + 1):
+        target = ts_now + k * dt
+        fi = int(np.searchsorted(gt_ts, target))
+        if fi >= len(gt_ts):
+            break
+        if abs(gt_ts[fi] - target) <= 1.5 * dt:
+            pts.append(gt_pos[fi])
+    return pts
+
+def gt_current_pos(gt_ts, gt_pos, ts_now, dt):
+    """Return GT position at ts_now (within 1.5 frames), or None."""
+    fi = int(np.searchsorted(gt_ts, ts_now))
+    if fi < len(gt_ts) and abs(gt_ts[fi] - ts_now) <= 1.5 * dt:
+        return gt_pos[fi]
+    if fi > 0 and abs(gt_ts[fi - 1] - ts_now) <= 1.5 * dt:
+        return gt_pos[fi - 1]
+    return None
+
+def run_viz(
+    frames,
+    detections,
+    gt_arrs,
+    tracker,
+    output_dir,
+    fps=30,
+    future_frames=FUTURE_FRAMES,
+):
+    """Render tracking-visualization frames (detection boxes, GT positions
+    and future path, tentative tracks, and Kalman tracks with their predicted
+    trajectories) as numbered JPEGs into output_dir, for the dataset player.
+    A .complete marker distinguishes finished renders from interrupted ones."""
+    os.makedirs(output_dir, exist_ok=True)
+
+    for i, frame_item in enumerate(frames):
+        frame_path = frame_item["path"] if isinstance(frame_item, dict) else frame_item
+        if not os.path.exists(frame_path):
+            print("MISSING FILE:", frame_path)
+            continue
+        frame = cv2.imread(frame_path)
+        if frame is None:
+            print("CV2 FAILED TO READ:", frame_path)
+            continue
+
+        # timestamp must be provided externally via metadata
+        ts_s = frame_item["ts"] if isinstance(frame_item, dict) else None
+        if ts_s is None:
+            raise ValueError("Frames must include timestamps when not using filenames")
+
+        # --- detections ---
+        raw_dets = detections.get(ts_s, [])
+        det_positions = [np.array([d[0], d[1]]) for d in raw_dets]
+
+        # --- tracker step ---
+        results = tracker.step(det_positions)
+
+        # --- draw: detections ---
+        for cx, cy, bw, bh in raw_dets:
+            x1 = int(cx - bw / 2); y1 = int(cy - bh / 2)
+            x2 = int(cx + bw / 2); y2 = int(cy + bh / 2)
+            cv2.rectangle(frame, (x1, y1), (x2, y2), C_BOX, 2)
+
+        # --- draw: GT current position + future path ---
+        for gt_idx, (tid, ga) in enumerate(sorted(gt_arrs.items())):
+            c_gt = GT_COLORS[gt_idx % len(GT_COLORS)]
+            cur = gt_current_pos(ga["ts"], ga["pos"], ts_s, dt=1/fps)
+            if cur is not None:
+                cv2.circle(frame, (int(cur[0]), int(cur[1])), 5, C_GT_CURRENT, -1)
+            fut_pts = gt_future_pts(
+                ga["ts"], ga["pos"], ts_s, dt=1/fps, n_frames=future_frames
+            )
+            draw_trajectory(frame, fut_pts, c_gt)
+
+        # --- draw: tentative tracks ---
+        for tent in tracker.warmup:
+            p = tent["buf"][-1]
+            cv2.circle(frame, (int(p[0]), int(p[1])), 4, C_TENT, -1)
+
+        # --- draw: active tracks with predicted trajectory ---
+        for tid, pos, vel, (fut_pos, fut_out, fut_edge, fut_ellipses) in results:
+            c = TRACK_COLORS[tid % len(TRACK_COLORS)]
+            cv2.circle(frame, (int(pos[0]), int(pos[1])), 7, c, -1)
+
+            inside_pts = [p for p, o in zip(fut_pos, fut_out) if not o]
+            draw_trajectory(frame, inside_pts, c)
+
+            for p, out, edge in zip(fut_pos, fut_out, fut_edge):
+                if out:
+                    cv2.circle(frame, (int(edge[0]), int(edge[1])), 6, c, 1)
+                    break
+
+            speed = float(np.hypot(vel[0], vel[1]))
+            cv2.putText(
+                frame,
+                f"T{tid} {speed:.0f}px/s",
+                (int(pos[0]) + 8, int(pos[1]) - 8),
+                FONT, FONT_SCALE, c, FONT_THICK, cv2.LINE_AA,
+            )
+
+        cv2.imwrite(os.path.join(output_dir, f"{i:05d}.jpg"), frame)
+        if (i + 1) % 500 == 0:
+            print(f"{i+1}/{len(frames)} frames processed")
+
+    open(os.path.join(output_dir, ".complete"), "w").close()
+    print(f"Saved {len(frames)} overlay frames → {output_dir}")
+
+def load_processed_jsonl(path, frame_type, img_w=1280, img_h=720, sequence=None):
+    """
+    Returns (optionally filtered to one sequence, e.g. "seq40"):
+        frames: list of dicts with ts + image path, sorted by timestamp
+        detections_by_ts: dict ts -> [(cx,cy,w,h), ...] (kept detections only)
+        gt_by_seq: dict sequence -> {ts, pos} as numpy arrays (pixels)
+    """
+    detections_by_ts = defaultdict(list)
+    gt_by_seq = defaultdict(lambda: {"ts": [], "pos": []})
+    frames = []
+
+    with open(path, "r") as f:
+        for line in f:
+            if not line.strip():
+                continue
+            obj = json.loads(line)
+            ts = round(obj["timestamp_sec"], 6)
+            seq = obj["sequence"]
+            if sequence is not None and seq != sequence:
+                continue
+
+            frames.append({"ts": ts, "path": obj[frame_type]})
+
+            # GT (normalized -> pixels)
+            for gt in obj.get("gt_boxes_norm", []):
+                cx, cy, w, h = gt
+                gt_by_seq[seq]["ts"].append(ts)
+                gt_by_seq[seq]["pos"].append([cx * img_w, cy * img_h])
+
+            # detections (xyxy -> cxcywh)
+            for det in obj.get("detections", []):
+                if not det.get("kept", False):
+                    continue
+                x1, y1, x2, y2 = det["bbox_xyxy"]
+                detections_by_ts[ts].append(
+                    ((x1 + x2) / 2, (y1 + y2) / 2, x2 - x1, y2 - y1)
+                )
+
+    gt_out = {}
+    for seq, d in gt_by_seq.items():
+        gt_out[seq] = {
+            "ts": np.array(d["ts"], dtype=np.float64),
+            "pos": np.array(d["pos"], dtype=np.float64),
+        }
+
+    frames = sorted(frames, key=lambda x: x["ts"])
+    return frames, dict(detections_by_ts), gt_out
+
 PROCESSED_DIR = "processed"
 DATASET_DIR = "dataset"
+
+# Tracking overlays live under processed/ so the Preview frame server can
+# serve them to the client-side player.
+TRACKING_VIZ_DIR = os.path.join(PROCESSED_DIR, "tracking_viz")
+
+def tracking_frame_paths(seq, stream):
+    """Sorted overlay frame paths for one sequence/stream, or [] if the
+    render never finished (no .complete marker)."""
+    out_dir = os.path.join(TRACKING_VIZ_DIR, seq, stream)
+    if not os.path.exists(os.path.join(out_dir, ".complete")):
+        return []
+    return [
+        os.path.join(out_dir, f)
+        for f in sorted(os.listdir(out_dir))
+        if f.endswith(".jpg")
+    ]
+
+def render_tracking_overlays(seq):
+    """Render tracking overlay frames for both streams of one sequence.
+    Returns False if the blind-test JSONL has no detections for it."""
+    for stream, frame_type in (("event", "event_image"), ("rgb", "rgb_image")):
+        out_dir = os.path.join(TRACKING_VIZ_DIR, seq, stream)
+        if os.path.exists(os.path.join(out_dir, ".complete")):
+            continue
+        frames, detections, gt = load_processed_jsonl(
+            BLIND_TEST_JSONL, frame_type, sequence=seq
+        )
+        if not frames:
+            return False
+        run_viz(
+            frames=frames,
+            detections=detections,
+            gt_arrs=gt,
+            tracker=make_tracker(),  # fresh: the tracker is stateful
+            output_dir=out_dir,
+        )
+    return True
 
 def dataset_frame_paths(dataset, stream, processed_dir=PROCESSED_DIR):
     """Sorted aligned frame paths for one processed dataset. stream is "rgb" or "event"."""
@@ -462,7 +714,7 @@ BLIND_TEST_MANIFEST = "outputs/web/fusion_manifest_blind_test_v4.json"
 
 # --- TOP MENU ---
 tabs = st.tabs([
-    "Preview", "Side-by-Side", "As a video", "confusion matrices", "Example"
+    "Preview", "Tracking", "Results", "confusion matrices", "Example"
 ])
 
 # --- PREVIEW TAB ---
@@ -485,7 +737,7 @@ with tabs[0]:
             render_dataset_player(rgb_frames[:n_pairs], event_frames[:n_pairs])
 
 
-with tabs[1]:
+with tabs[2]:
     st.subheader("Model detections on the blind test, event and RGB side by side")
     sbs_rgb, sbs_evt, sbs_dets, sbs_gts = blind_test_player_data(BLIND_TEST_JSONL)
     st.caption(f"{len(sbs_rgb)} frames (seq40 / seq43 / seq46 / seq49)")
@@ -495,6 +747,61 @@ with tabs[1]:
         ":orange[Yellow] = kept detection (with fusion score), "
         ":red[Red] = rejected detection."
     )
+
+# --- TRACKING TAB ---
+def dataset_sequence(dataset_name):
+    """Map a processed dataset name to its blind-test sequence id, e.g.
+    "preprocessed_fred_40" -> "seq40". None if no number in the name."""
+    m = re.search(r"(\d+)\s*$", dataset_name)
+    return f"seq{int(m.group(1))}" if m else None
+
+with tabs[1]:
+    st.subheader("Kalman-filter tracking on the processed dataset")
+    if selected_dataset is None:
+        st.info("Select a zip in the sidebar (Step 1) and press Process (Step 2) first.")
+    else:
+        seq = dataset_sequence(selected_dataset)
+        if seq is None:
+            st.warning(
+                f"Cannot infer a sequence number from dataset name "
+                f"'{selected_dataset}', so its detections cannot be looked up."
+            )
+        else:
+            evt_paths = tracking_frame_paths(seq, "event")
+            rgb_paths = tracking_frame_paths(seq, "rgb")
+            n_pairs = min(len(evt_paths), len(rgb_paths))
+            if n_pairs > 0:
+                st.write(
+                    f"**{selected_dataset}** ({seq}) - {n_pairs} tracking frames. "
+                    "Press ▶ to play, drag the bar to seek, "
+                    "drag on the image to wipe between RGB and Event."
+                )
+                render_dataset_player(rgb_paths[:n_pairs], evt_paths[:n_pairs])
+                st.write(
+                    ":green[Green box] = kept detection, "
+                    ":orange[Orange dot] = current ground-truth position, "
+                    ":red[Red trail] = ground-truth future path (0.8 s), "
+                    ":violet[Magenta dot] = tentative track (warming up), "
+                    "colored dot + trail = active Kalman track with its "
+                    "predicted trajectory and speed label."
+                )
+            else:
+                st.info(
+                    f"Tracking frames for {seq} have not been rendered yet. "
+                    "This takes a minute or two — leave the page alone while "
+                    "it renders (interacting with the app interrupts it)."
+                )
+                if st.button(f"Create tracking visualization for {seq}"):
+                    with st.spinner(f"Rendering tracking overlays for {seq} ..."):
+                        ok = render_tracking_overlays(seq)
+                    if ok:
+                        st.rerun()
+                    else:
+                        st.warning(
+                            f"No detections available for {seq}. Tracking "
+                            "needs the blind-test pipeline detections "
+                            "(available sequences: seq40, seq43, seq46, seq49)."
+                        )
 
 MODEL_LABELS = {
     "event_yolo_conf0.25": "Event YOLO (conf 0.25)",
