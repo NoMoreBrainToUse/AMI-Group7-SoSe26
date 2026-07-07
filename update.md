@@ -1,3 +1,38 @@
+# Update — Web GUI (2026-07-07): full pipeline from the GUI
+
+The sidebar now has a **Step 3 - Run pipeline** button that runs the complete
+inference pipeline on the uploaded sequence (any FRED-format zip, not just the
+four blind-test sequences):
+
+1. `src/preprocessing/prepare_fred_yolo.py` — RGB/event YOLO layout (whole
+   sequence as the `test` split) → `processed/pipeline_<seq>/`
+2. `src/verifier/export_proposals.py` — event-YOLO proposals with the **v5
+   weights** (`runs/event_yolo/fred_subset_v5_event_yolo11m/weights/best.pt`)
+3. `src/verifier/extract_crops.py` — RGB + event crops
+4. `src/verifier/eval_verifier.py` — v4 verifier scores for both modalities
+5. `src/verifier/compute_fusion_metrics.py` — late fusion with the v5-calibrated
+   config (`runs/verifier/rgb_v4/calib_v5/fusion_results_rgb_test_conf0.20.json`),
+   confusion matrices, and web outputs
+   → `outputs/web/fusion_{detections,manifest}_pipeline_<seq>.{jsonl,json}`,
+   `outputs/confusion_matrices_pipeline_<seq>.png`
+
+Orchestrated by `src/pipeline/gui_pipeline.py` (also runnable standalone:
+`python src/pipeline/gui_pipeline.py <seq> [--overwrite]`). Finished phases are
+skipped, so an interrupted run resumes where it stopped.
+
+Once pipeline results exist for the loaded sequence, the **Tracking**, **Fusion**
+and **confusion matrices** tabs automatically switch from the committed
+blind-test v4 results to that run's outputs.
+
+Extra dependencies (CPU inference), installed on top of `requirements-gui.txt`:
+
+```bash
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+pip install ultralytics
+```
+
+---
+
 # Update — Web GUI (2026-07-02)
 
 Additions on the `feature/gui` branch, complementing `README_PIPELINE.md`

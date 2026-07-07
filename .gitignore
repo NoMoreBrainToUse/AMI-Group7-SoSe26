@@ -24,6 +24,7 @@ yolo26n.pt
 !ami-project/runs/verifier/rgb_v4/efficientnet_b0/best.pt
 !ami-project/runs/verifier/rgb_v4/event_efficientnet_b0/best.pt
 !runs/event_yolo/fred_subset_v3_event_yolo11m/weights/best.pt
+!runs/event_yolo/fred_subset_v5_event_yolo11m/weights/best.pt
 !runs/verifier/rgb_v3/mobilenet_v3_small/best.pt
 !runs/verifier/rgb_v3/event_mobilenet_v3_small/best.pt
 !runs/verifier/rgb_v4/efficientnet_b0/best.pt
@@ -35,6 +36,21 @@ runs/detect/
 runs/rgb_yolo/
 runs/verifier/rgb_v3/
 runs/verifier/rgb_v4/blind_v4/
+runs/verifier/rgb_v4/blind_v5/
+runs/verifier/rgb_v4/calib/
+# calib_v5: keep only the fusion config the GUI pipeline needs
+runs/verifier/rgb_v4/calib_v5/*
+!runs/verifier/rgb_v4/calib_v5/fusion_results_rgb_test_conf0.20.json
+# per-model eval artifacts (regenerable via eval_verifier.py)
+runs/verifier/rgb_v4/*/scored_*.jsonl
+runs/verifier/rgb_v4/*/eval_curve_*.csv
+runs/verifier/rgb_v4/*/eval_ops_*.json
+
+# Per-run GUI pipeline outputs (regenerable via sidebar Step 3)
+runs/verifier/pipeline_*/
+outputs/web/fusion_detections_pipeline_*.jsonl
+outputs/web/fusion_manifest_pipeline_*.json
+outputs/confusion_matrices_pipeline_*.png
 
 # Output media (large, regenerable)
 outputs/videos/

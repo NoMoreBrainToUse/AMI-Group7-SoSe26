@@ -12,6 +12,12 @@ from functools import partial
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 
 from src.preprocessing.preprocess_zip import preprocess_zip
+from src.pipeline.gui_pipeline import (
+    pipeline_name,
+    pipeline_paths,
+    pipeline_results,
+    run_pipeline,
+)
 from CA_Meas_kalman_new import MultiDroneTracker
 
 GT_COLOR   = (0,255,0)
@@ -23,9 +29,10 @@ FUTURE_FRAMES = 24   # 0.8 s at 30 fps
 IMG_W, IMG_H  = 1280, 720
 
 # colours (BGR)
-C_BOX        = (  0, 220,   0)   # green  — Event_YOLO_new detection box
+C_BOX        = (  0, 255, 255)   # yellow — drone detection box (matches Fusion tab)
 C_TENT       = (200,  50, 200)   # magenta — tentative track dot
 C_GT_CURRENT = (  0,  80, 255)   # orange-red — current GT position
+C_GT_BOX     = (  0, 220,   0)   # green — current GT bounding box (matches Fusion tab)
 # GT future colours per GT track ID (red family)
 GT_COLORS = [
     (  0,  50, 220),   # red
@@ -161,14 +168,19 @@ def gt_future_pts(gt_ts, gt_pos, ts_now, dt, n_frames):
             pts.append(gt_pos[fi])
     return pts
 
-def gt_current_pos(gt_ts, gt_pos, ts_now, dt):
-    """Return GT position at ts_now (within 1.5 frames), or None."""
+def gt_current_idx(gt_ts, ts_now, dt):
+    """Index of the GT sample at ts_now (within 1.5 frames), or None."""
     fi = int(np.searchsorted(gt_ts, ts_now))
     if fi < len(gt_ts) and abs(gt_ts[fi] - ts_now) <= 1.5 * dt:
-        return gt_pos[fi]
+        return fi
     if fi > 0 and abs(gt_ts[fi - 1] - ts_now) <= 1.5 * dt:
-        return gt_pos[fi - 1]
+        return fi - 1
     return None
+
+def gt_current_pos(gt_ts, gt_pos, ts_now, dt):
+    """Return GT position at ts_now (within 1.5 frames), or None."""
+    fi = gt_current_idx(gt_ts, ts_now, dt)
+    return gt_pos[fi] if fi is not None else None
 
 def run_viz(
     frames,
@@ -213,12 +225,21 @@ def run_viz(
             x2 = int(cx + bw / 2); y2 = int(cy + bh / 2)
             cv2.rectangle(frame, (x1, y1), (x2, y2), C_BOX, 2)
 
-        # --- draw: GT current position + future path ---
+        # --- draw: GT current box + position + future path ---
         for gt_idx, (tid, ga) in enumerate(sorted(gt_arrs.items())):
             c_gt = GT_COLORS[gt_idx % len(GT_COLORS)]
-            cur = gt_current_pos(ga["ts"], ga["pos"], ts_s, dt=1/fps)
-            if cur is not None:
+            fi = gt_current_idx(ga["ts"], ts_s, dt=1/fps)
+            if fi is not None:
+                cur = ga["pos"][fi]
                 cv2.circle(frame, (int(cur[0]), int(cur[1])), 5, C_GT_CURRENT, -1)
+                if "box" in ga:  # yellow GT bounding box, like the Fusion player
+                    cx, cy, bw, bh = ga["box"][fi]
+                    cv2.rectangle(
+                        frame,
+                        (int(cx - bw / 2), int(cy - bh / 2)),
+                        (int(cx + bw / 2), int(cy + bh / 2)),
+                        C_GT_BOX, 2,
+                    )
             fut_pts = gt_future_pts(
                 ga["ts"], ga["pos"], ts_s, dt=1/fps, n_frames=future_frames
             )
@@ -265,7 +286,7 @@ def load_processed_jsonl(path, frame_type, img_w=1280, img_h=720, sequence=None)
         gt_by_seq: dict sequence -> {ts, pos} as numpy arrays (pixels)
     """
     detections_by_ts = defaultdict(list)
-    gt_by_seq = defaultdict(lambda: {"ts": [], "pos": []})
+    gt_by_seq = defaultdict(lambda: {"ts": [], "pos": [], "box": []})
     frames = []
 
     with open(path, "r") as f:
@@ -285,6 +306,7 @@ def load_processed_jsonl(path, frame_type, img_w=1280, img_h=720, sequence=None)
                 cx, cy, w, h = gt
                 gt_by_seq[seq]["ts"].append(ts)
                 gt_by_seq[seq]["pos"].append([cx * img_w, cy * img_h])
+                gt_by_seq[seq]["box"].append([cx * img_w, cy * img_h, w * img_w, h * img_h])
 
             # detections (xyxy -> cxcywh)
             for det in obj.get("detections", []):
@@ -300,6 +322,7 @@ def load_processed_jsonl(path, frame_type, img_w=1280, img_h=720, sequence=None)
         gt_out[seq] = {
             "ts": np.array(d["ts"], dtype=np.float64),
             "pos": np.array(d["pos"], dtype=np.float64),
+            "box": np.array(d["box"], dtype=np.float64),
         }
 
     frames = sorted(frames, key=lambda x: x["ts"])
@@ -312,10 +335,10 @@ DATASET_DIR = "dataset"
 # serve them to the client-side player.
 TRACKING_VIZ_DIR = os.path.join(PROCESSED_DIR, "tracking_viz")
 
-def tracking_frame_paths(seq, stream):
-    """Sorted overlay frame paths for one sequence/stream, or [] if the
+def tracking_frame_paths(viz_key, stream):
+    """Sorted overlay frame paths for one viz_key/stream, or [] if the
     render never finished (no .complete marker)."""
-    out_dir = os.path.join(TRACKING_VIZ_DIR, seq, stream)
+    out_dir = os.path.join(TRACKING_VIZ_DIR, viz_key, stream)
     if not os.path.exists(os.path.join(out_dir, ".complete")):
         return []
     return [
@@ -324,15 +347,17 @@ def tracking_frame_paths(seq, stream):
         if f.endswith(".jpg")
     ]
 
-def render_tracking_overlays(seq):
-    """Render tracking overlay frames for both streams of one sequence.
-    Returns False if the blind-test JSONL has no detections for it."""
+def render_tracking_overlays(viz_key, jsonl_path, sequence):
+    """Render tracking overlay frames for both streams of one sequence, using
+    the detections from jsonl_path (blind-test or pipeline output). Overlays
+    land under tracking_viz/<viz_key>/. Returns False if the JSONL has no
+    frames for the sequence."""
     for stream, frame_type in (("event", "event_image"), ("rgb", "rgb_image")):
-        out_dir = os.path.join(TRACKING_VIZ_DIR, seq, stream)
+        out_dir = os.path.join(TRACKING_VIZ_DIR, viz_key, stream)
         if os.path.exists(os.path.join(out_dir, ".complete")):
             continue
         frames, detections, gt = load_processed_jsonl(
-            BLIND_TEST_JSONL, frame_type, sequence=seq
+            jsonl_path, frame_type, sequence=sequence
         )
         if not frames:
             return False
@@ -669,11 +694,50 @@ if st.sidebar.button("Process"):
                 st.sidebar.error(f"Preprocessing failed: {e}")
             else:
                 st.session_state["dataset"] = dataset_name
+                st.session_state["seq"] = os.path.splitext(zip_choice)[0]
 selected_dataset = st.session_state.get("dataset")
+selected_seq = st.session_state.get("seq")
 if selected_dataset is not None:
     st.sidebar.caption(f"Loaded: {selected_dataset}")
 
-st.sidebar.header("Step 3 - Visualize!")
+st.sidebar.header("Step 3 - Run pipeline")
+# Full inference pipeline on the processed sequence: event-YOLO v5 proposals,
+# RGB+event verifier scoring, late fusion, confusion matrices. Slow on CPU;
+# already-computed phases are skipped, so an interrupted run resumes.
+if selected_seq is not None and pipeline_results(selected_seq) is not None:
+    st.sidebar.caption(f"Results ready: {pipeline_name(selected_seq)}")
+    rerun_pipeline = st.sidebar.checkbox(
+        "Recompute from scratch", value=False, key="pipeline_overwrite"
+    )
+else:
+    rerun_pipeline = False
+if st.sidebar.button("Run pipeline"):
+    if selected_seq is None:
+        st.sidebar.warning("Upload and Process a zip first (steps 1-2).")
+    else:
+        with st.sidebar.status("Running pipeline...", expanded=True) as pstatus:
+            phase_slot = st.empty()
+            line_slot = st.empty()
+            def pipeline_progress(msg):
+                if msg.startswith(("PHASE", "DONE")):
+                    phase_slot.write(msg)
+                    line_slot.empty()
+                else:
+                    line_slot.caption(msg[:120])
+            try:
+                run_pipeline(
+                    selected_seq,
+                    progress=pipeline_progress,
+                    overwrite=rerun_pipeline,
+                )
+            except Exception as e:
+                pstatus.update(label="Pipeline failed", state="error")
+                st.sidebar.error(f"Pipeline failed: {e}")
+            else:
+                pstatus.update(label="Pipeline finished", state="complete")
+                st.rerun()  # tabs pick up the new results
+
+st.sidebar.header("Step 4 - Visualize!")
 st.sidebar.info("Click a visualization tab at the top.")
 
 # --- PROCESS DATASET ---
@@ -684,17 +748,19 @@ input_data=[]
 
 
 # --- LOAD PROCESSED DATA ---
+# mtime is part of the cache key so a pipeline re-run (same filename, new
+# content) invalidates the cached copy.
 @st.cache_data
-def load_jsonl(jsonl_path):
+def load_jsonl(jsonl_path, mtime=0.0):
     with open(jsonl_path, "r") as f:
         return [json.loads(line) for line in f]
 
 @st.cache_data
-def blind_test_player_data(jsonl_path):
-    """Frame paths and boxes from the blind-test JSONL, compacted for the
+def fusion_player_data(jsonl_path, mtime=0.0):
+    """Frame paths and boxes from a fusion-detections JSONL, compacted for the
     side-by-side player (detections as [x1, y1, x2, y2, kept, score])."""
     rgb, evt, dets, gts = [], [], [], []
-    for r in load_jsonl(jsonl_path):
+    for r in load_jsonl(jsonl_path, mtime):
         rgb.append(r["rgb_image"])
         evt.append(r["event_image"])
         dets.append([
@@ -705,16 +771,28 @@ def blind_test_player_data(jsonl_path):
     return rgb, evt, dets, gts
 
 @st.cache_data
-def load_manifest(manifest_path):
+def load_manifest(manifest_path, mtime=0.0):
     with open(manifest_path, "r") as f:
         return json.load(f)
 
 BLIND_TEST_JSONL = "outputs/web/fusion_detections_blind_test_v4.jsonl"
 BLIND_TEST_MANIFEST = "outputs/web/fusion_manifest_blind_test_v4.json"
 
+def active_fusion_source():
+    """Which fusion results the Tracking / Fusion / confusion-matrix tabs show:
+    the pipeline outputs of the currently processed sequence when they exist,
+    otherwise the committed blind-test v4 results.
+
+    Returns (name, detections_jsonl, manifest_json, is_pipeline)."""
+    seq = st.session_state.get("seq")
+    if seq is not None and pipeline_results(seq) is not None:
+        p = pipeline_paths(seq)
+        return pipeline_name(seq), str(p["web_detections"]), str(p["web_manifest"]), True
+    return "blind_test_v4", BLIND_TEST_JSONL, BLIND_TEST_MANIFEST, False
+
 # --- TOP MENU ---
 tabs = st.tabs([
-    "Preview", "Tracking", "Fusion", "confusion matrices", "Example"
+    "Preview", "Tracking", "Fusion", "Evaluation"
 ])
 
 # --- PREVIEW TAB ---
@@ -738,9 +816,21 @@ with tabs[0]:
 
 
 with tabs[2]:
-    st.subheader("Model detections on the blind test, event and RGB side by side")
-    sbs_rgb, sbs_evt, sbs_dets, sbs_gts = blind_test_player_data(BLIND_TEST_JSONL)
-    st.caption(f"{len(sbs_rgb)} frames (seq40 / seq43 / seq46 / seq49)")
+    fusion_name, fusion_jsonl, fusion_manifest_path, fusion_is_pipeline = active_fusion_source()
+    st.subheader("Fusion detections, event and RGB side by side")
+    if not fusion_is_pipeline:
+        st.info(
+            "Showing the precomputed blind-test v4 results. Run the pipeline "
+            "(sidebar Step 3) to see fusion detections for your uploaded dataset."
+        )
+    fusion_manifest = load_manifest(fusion_manifest_path, os.path.getmtime(fusion_manifest_path))
+    sbs_rgb, sbs_evt, sbs_dets, sbs_gts = fusion_player_data(
+        fusion_jsonl, os.path.getmtime(fusion_jsonl)
+    )
+    st.caption(
+        f"{len(sbs_rgb)} frames ({', '.join(fusion_manifest['sequences'])}) "
+        f"- source: {fusion_name}"
+    )
     render_side_by_side_player(sbs_rgb, sbs_evt, sbs_dets, sbs_gts)
     st.write(
         ":green[Green] = ground truth, "
@@ -760,23 +850,45 @@ with tabs[1]:
     if selected_dataset is None:
         st.info("Select a zip in the sidebar (Step 1) and press Process (Step 2) first.")
     else:
-        seq = dataset_sequence(selected_dataset)
+        fusion_name, fusion_jsonl, _, fusion_is_pipeline = active_fusion_source()
+        if fusion_is_pipeline:
+            seq = f"seq{selected_seq}"
+            viz_key = fusion_name  # pipeline_<seq>: keep apart from blind-test overlays
+        else:
+            seq = dataset_sequence(selected_dataset)
+            viz_key = seq
         if seq is None:
             st.warning(
                 f"Cannot infer a sequence number from dataset name "
-                f"'{selected_dataset}', so its detections cannot be looked up."
+                f"'{selected_dataset}', so its detections cannot be looked up. "
+                "Run the pipeline (sidebar Step 3) to generate detections for it."
             )
         else:
-            evt_paths = tracking_frame_paths(seq, "event")
-            rgb_paths = tracking_frame_paths(seq, "rgb")
+            evt_paths = tracking_frame_paths(viz_key, "event")
+            rgb_paths = tracking_frame_paths(viz_key, "rgb")
             n_pairs = min(len(evt_paths), len(rgb_paths))
             if n_pairs > 0:
                 st.write(
-                    f"**{selected_dataset}** ({seq}) - {n_pairs} tracking frames. "
+                    f"**{selected_dataset}** ({seq}, detections: {fusion_name}) - "
+                    f"{n_pairs} tracking frames. "
                     "Press ▶ to play, drag the bar to seek, "
                     "drag on the image to wipe between RGB and Event."
                 )
                 render_dataset_player(rgb_paths[:n_pairs], evt_paths[:n_pairs])
+                st.write(
+                    ":orange[Yellow box] = drone detection, "
+                    ":green[Green box] = ground-truth box, "
+                    ":red[Orange-red dot] = current ground-truth position, "
+                    ":red[Red trail] = ground-truth future path (0.8 s), "
+                    ":violet[Magenta dot] = tentative track (warming up, "
+                    "needs 5 consecutive detections)."
+                )
+                st.write(
+                    "Colored dot + trail = active Kalman track with its "
+                    "predicted trajectory (0.8 s ahead) and speed label "
+                    "T\\<id\\> \\<speed\\>px/s; a hollow circle marks where the "
+                    "prediction leaves the frame."
+                )
             else:
                 st.info(
                     f"Tracking frames for {seq} have not been rendered yet. "
@@ -785,19 +897,20 @@ with tabs[1]:
                 )
                 if st.button(f"Create tracking visualization for {seq}"):
                     with st.spinner(f"Rendering tracking overlays for {seq} ..."):
-                        ok = render_tracking_overlays(seq)
+                        ok = render_tracking_overlays(viz_key, fusion_jsonl, seq)
                     if ok:
                         st.rerun()
                     else:
                         st.warning(
-                            f"No detections available for {seq}. Tracking "
-                            "needs the blind-test pipeline detections "
-                            "(available sequences: seq40, seq43, seq46, seq49)."
+                            f"No detections available for {seq} in {fusion_name}. "
+                            "Run the pipeline (sidebar Step 3) for this dataset, "
+                            "or use one of the blind-test sequences "
+                            "(seq40, seq43, seq46, seq49)."
                         )
 
 MODEL_LABELS = {
-    "event_yolo_conf0.25": "Event YOLO (conf 0.25)",
-    "event_yolo_conf0.50": "Event YOLO (conf 0.50)",
+    "event_yolo_conf0.25": "Yolo (conf 0.25)",
+    "event_yolo_conf0.50": "Yolo (conf 0.50)",
     "fusion_v4": "Fusion v4",
 }
 
@@ -849,16 +962,23 @@ def confusion_card(title, m):
 """
 
 with tabs[3]:
-    st.subheader("Confusion matrices - blind test v4")
-    manifest = load_manifest(BLIND_TEST_MANIFEST)
+    fusion_name, _, fusion_manifest_path, fusion_is_pipeline = active_fusion_source()
+    st.subheader(f"Evaluation - {fusion_name}")
+    if not fusion_is_pipeline:
+        st.info(
+            "Showing the precomputed blind-test v4 metrics. Run the pipeline "
+            "(sidebar Step 3) to compute them for your uploaded dataset."
+        )
+    manifest = load_manifest(fusion_manifest_path, os.path.getmtime(fusion_manifest_path))
     st.caption(
         f"{manifest['n_frames_total']} frames, {manifest['n_detections_total']} detections "
         f"across {', '.join(manifest['sequences'])} - "
         f"fusion threshold {manifest['fusion_threshold']:.3f}. "
         "TN is undefined for open-set detection, hence n/a."
     )
+    split_options = ["all"] + [s for s in manifest["splits"] if s in manifest["metrics"]]
     split = st.radio(
-        "Split", ["all", "train", "val", "test"], horizontal=True, key="cm_split"
+        "Split", split_options, horizontal=True, key=f"cm_split_{fusion_name}"
     )
     split_metrics = manifest["metrics"][split]
     columns = st.columns(len(split_metrics))
@@ -868,8 +988,3 @@ with tabs[3]:
                 confusion_card(MODEL_LABELS.get(model_key, model_key), m),
                 unsafe_allow_html=True,
             )
-    with st.expander("Original figure (PNG)"):
-        st.image("outputs/confusion_matrices_blind_test_v4.png")
-
-with tabs[4]:
-    st.write('decide what data to keep in the repository as an example')
