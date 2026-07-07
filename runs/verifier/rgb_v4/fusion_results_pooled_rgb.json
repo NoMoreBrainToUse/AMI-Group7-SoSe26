@@ -1,0 +1,59 @@
+{
+  "recall_target": 0.95,
+  "n_tp": 33708,
+  "n_fp": 6547,
+  "rgb_scored": "/home/simonwesenick/Projects/ami-project/runs/verifier/rgb_v4/calib/pooled_rgb.jsonl",
+  "event_scored": "/home/simonwesenick/Projects/ami-project/runs/verifier/rgb_v4/calib/pooled_event.jsonl",
+  "fusion_sweep": [
+    {
+      "lambda": 0.25,
+      "threshold": 0.3452107582698034,
+      "recall": 0.9500118666192002,
+      "tp": 32023,
+      "fp": 3671,
+      "fp_reduction_pct": 43.93
+    },
+    {
+      "lambda": 0.5,
+      "threshold": 0.46142600965288655,
+      "recall": 0.9500118666192002,
+      "tp": 32023,
+      "fp": 3401,
+      "fp_reduction_pct": 48.05
+    },
+    {
+      "lambda": 0.75,
+      "threshold": 0.4910972989855989,
+      "recall": 0.9500118666192002,
+      "tp": 32023,
+      "fp": 3278,
+      "fp_reduction_pct": 49.93
+    },
+    {
+      "lambda": 1.0,
+      "threshold": 0.45213633116962204,
+      "recall": 0.9500118666192002,
+      "tp": 32023,
+      "fp": 3287,
+      "fp_reduction_pct": 49.79
+    },
+    {
+      "lambda": 1.5,
+      "threshold": 0.31405517675720596,
+      "recall": 0.9500118666192002,
+      "tp": 32023,
+      "fp": 3328,
+      "fp_reduction_pct": 49.17
+    },
+    {
+      "lambda": 2.0,
+      "threshold": 0.1600128478425861,
+      "recall": 0.9500118666192002,
+      "tp": 32023,
+      "fp": 3392,
+      "fp_reduction_pct": 48.19
+    }
+  ],
+  "best_lambda": 0.75,
+  "best_threshold": 0.4910972989855989
+}
