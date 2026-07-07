@@ -28,6 +28,12 @@ yolo26n.pt
 !runs/verifier/rgb_v3/event_mobilenet_v3_small/best.pt
 !runs/verifier/rgb_v4/efficientnet_b0/best.pt
 !runs/verifier/rgb_v4/event_efficientnet_b0/best.pt
+!runs/event_yolo/fred_subset_v5_event_yolo11m/weights/best.pt
+!runs/event_yolo/fred_subset_v5_rgb_yolo11m/weights/best.pt
+
+# Exclude large scored JSONL files (regenerable)
+runs/verifier/rgb_v4/blind_v5/scored_*.jsonl
+runs/verifier/rgb_v4/calib_v5/scored_*.jsonl
 
 # Training output directories (regenerable)
 runs/proposals/

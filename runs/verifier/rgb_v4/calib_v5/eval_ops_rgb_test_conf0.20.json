@@ -1,0 +1,38 @@
+{
+  "baseline": {
+    "recall": 1.0,
+    "tp": 29196,
+    "fp": 1548,
+    "fp_reduction_pct": 0.0,
+    "verifier_threshold": null
+  },
+  "operating_points": {
+    "0.95": {
+      "verifier_threshold": 0.044,
+      "tp": 27739,
+      "fp": 1236,
+      "recall": 0.9501,
+      "fp_reduction_pct": 20.16,
+      "detections_kept": 28975,
+      "recall_target": 0.95
+    },
+    "0.9": {
+      "verifier_threshold": 0.168,
+      "tp": 26276,
+      "fp": 1071,
+      "recall": 0.9,
+      "fp_reduction_pct": 30.81,
+      "detections_kept": 27347,
+      "recall_target": 0.9
+    },
+    "0.85": {
+      "verifier_threshold": 0.363,
+      "tp": 24820,
+      "fp": 946,
+      "recall": 0.8501,
+      "fp_reduction_pct": 38.89,
+      "detections_kept": 25766,
+      "recall_target": 0.85
+    }
+  }
+}

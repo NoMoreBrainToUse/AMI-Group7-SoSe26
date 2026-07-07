@@ -1,71 +1,79 @@
 {
   "name": "blind_test_v4",
-  "created": "2026-06-27T08:35:37.409324+00:00",
+  "created": "2026-07-06T15:22:18.184515+00:00",
   "sequences": [
+    "seq40",
+    "seq43",
     "seq46",
-    "seq49"
+    "seq49",
+    "seq50",
+    "seq100",
+    "seq101",
+    "seq102",
+    "seq103",
+    "seq165"
   ],
   "splits": [
     "test"
   ],
-  "n_frames_total": 6480,
-  "n_frames_with_detections": 6127,
-  "n_detections_total": 10552,
+  "n_frames_total": 27107,
+  "n_frames_with_detections": 25171,
+  "n_detections_total": 32964,
   "fps": 30.0,
-  "fusion_lambda": 1.0,
-  "fusion_threshold": 0.9578781146006892,
+  "fusion_lambda": 0.75,
+  "fusion_threshold": 0.4910972989855989,
   "conf": "0.20",
   "metrics": {
     "test": {
       "event_yolo_conf0.25": {
-        "TP": 9345,
-        "FP": 889,
-        "FN": 149,
-        "precision": 0.9131,
-        "recall": 0.9843,
-        "f1": 0.9474
+        "TP": 29852,
+        "FP": 2318,
+        "FN": 385,
+        "precision": 0.9279,
+        "recall": 0.9873,
+        "f1": 0.9567
       },
       "event_yolo_conf0.50": {
-        "TP": 8177,
-        "FP": 386,
-        "FN": 1317,
-        "precision": 0.9549,
-        "recall": 0.8613,
-        "f1": 0.9057
+        "TP": 26488,
+        "FP": 996,
+        "FN": 3749,
+        "precision": 0.9638,
+        "recall": 0.876,
+        "f1": 0.9178
       },
       "fusion_v4": {
-        "TP": 9015,
-        "FP": 163,
-        "FN": 479,
-        "precision": 0.9822,
-        "recall": 0.9495,
-        "f1": 0.9656
+        "TP": 29333,
+        "FP": 462,
+        "FN": 904,
+        "precision": 0.9845,
+        "recall": 0.9701,
+        "f1": 0.9772
       }
     },
     "all": {
       "event_yolo_conf0.25": {
-        "TP": 9345,
-        "FP": 889,
-        "FN": 149,
-        "precision": 0.9131,
-        "recall": 0.9843,
-        "f1": 0.9474
+        "TP": 29852,
+        "FP": 2318,
+        "FN": 385,
+        "precision": 0.9279,
+        "recall": 0.9873,
+        "f1": 0.9567
       },
       "event_yolo_conf0.50": {
-        "TP": 8177,
-        "FP": 386,
-        "FN": 1317,
-        "precision": 0.9549,
-        "recall": 0.8613,
-        "f1": 0.9057
+        "TP": 26488,
+        "FP": 996,
+        "FN": 3749,
+        "precision": 0.9638,
+        "recall": 0.876,
+        "f1": 0.9178
       },
       "fusion_v4": {
-        "TP": 9015,
-        "FP": 163,
-        "FN": 479,
-        "precision": 0.9822,
-        "recall": 0.9495,
-        "f1": 0.9656
+        "TP": 29333,
+        "FP": 462,
+        "FN": 904,
+        "precision": 0.9845,
+        "recall": 0.9701,
+        "f1": 0.9772
       }
     }
   },

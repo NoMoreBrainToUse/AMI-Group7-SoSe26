@@ -1,0 +1,85 @@
+{
+  "name": "blind_test_v5_recalib",
+  "created": "2026-07-07T10:14:11.607519+00:00",
+  "sequences": [
+    "seq40",
+    "seq43",
+    "seq46",
+    "seq49",
+    "seq60",
+    "seq80",
+    "seq90",
+    "seq165",
+    "seq180",
+    "seq210"
+  ],
+  "splits": [
+    "test"
+  ],
+  "n_frames_total": 26913,
+  "n_frames_with_detections": 24250,
+  "n_detections_total": 29338,
+  "fps": 30.0,
+  "fusion_lambda": 2.0,
+  "fusion_threshold": 0.0020069643047367085,
+  "conf": "0.20",
+  "metrics": {
+    "test": {
+      "event_yolo_conf0.25": {
+        "TP": 27382,
+        "FP": 1246,
+        "FN": 433,
+        "precision": 0.9565,
+        "recall": 0.9844,
+        "f1": 0.9703
+      },
+      "event_yolo_conf0.50": {
+        "TP": 23161,
+        "FP": 427,
+        "FN": 4654,
+        "precision": 0.9819,
+        "recall": 0.8327,
+        "f1": 0.9012
+      },
+      "fusion_v4": {
+        "TP": 27138,
+        "FP": 914,
+        "FN": 677,
+        "precision": 0.9674,
+        "recall": 0.9757,
+        "f1": 0.9715
+      }
+    },
+    "all": {
+      "event_yolo_conf0.25": {
+        "TP": 27382,
+        "FP": 1246,
+        "FN": 433,
+        "precision": 0.9565,
+        "recall": 0.9844,
+        "f1": 0.9703
+      },
+      "event_yolo_conf0.50": {
+        "TP": 23161,
+        "FP": 427,
+        "FN": 4654,
+        "precision": 0.9819,
+        "recall": 0.8327,
+        "f1": 0.9012
+      },
+      "fusion_v4": {
+        "TP": 27138,
+        "FP": 914,
+        "FN": 677,
+        "precision": 0.9674,
+        "recall": 0.9757,
+        "f1": 0.9715
+      }
+    }
+  },
+  "paths": {
+    "web_detections": "outputs/blind_test_v5_recalib/fusion_detections_blind_test_v5_recalib.jsonl",
+    "confusion_plot": "outputs/confusion_matrices_blind_test_v4.png",
+    "processed_root": "processed/fred_subset_v5"
+  }
+}
