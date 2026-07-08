@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hybrid Vision — Group 7</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="app">
+
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="mark"></div>
+      <div>
+        <h1>Hybrid Vision</h1>
+        <div class="sub">AMI 2026 · Group 7</div>
+      </div>
+    </div>
+
+    <section class="side-section">
+      <h2>Sequences</h2>
+      <div class="seq-list" id="seq-list"></div>
+    </section>
+
+    <section class="side-section">
+      <h2>Import</h2>
+      <div class="drop" id="drop">
+        Drop a FRED sequence zip<br>or click to browse
+        <input type="file" id="file-input" accept=".zip" hidden>
+      </div>
+    </section>
+
+    <section class="side-section">
+      <h2>Pipeline</h2>
+      <div class="run-row">
+        <button class="btn primary" id="run-btn" disabled>Run pipeline</button>
+        <label class="check"><input type="checkbox" id="overwrite"> recompute</label>
+      </div>
+      <div class="console" id="console">Select a sequence to begin.</div>
+    </section>
+
+    <div class="foot">event-YOLO + RGB-YOLO → verifiers → fusion</div>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <nav class="tabs">
+        <button class="tab active" data-tab="preview">Preview</button>
+        <button class="tab" data-tab="detections">Detections</button>
+        <button class="tab" data-tab="tracking">Tracking</button>
+        <button class="tab" data-tab="metrics">Metrics</button>
+        <button class="tab" data-tab="reconstruction">Reconstruction</button>
+      </nav>
+      <div class="spacer"></div>
+      <div class="chips" id="chips"></div>
+    </div>
+    <div class="content" id="content"></div>
+  </main>
+
+</div>
+<script src="/app.js"></script>
+</body>
+</html>

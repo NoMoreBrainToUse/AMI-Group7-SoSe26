@@ -1,0 +1,21 @@
+# data and generated artifacts (regenerable; dataset via setup.sh --sample)
+dataset/
+processed/
+outputs/
+runs/
+
+# environments and caches
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+wandb/
+
+# stray model downloads at repo root (ultralytics AMP-check / training
+# fetches yolo11n.pt etc. into the cwd; real weights live in weights/)
+/*.pt
+/*.pt.tar
+
+# model weights are tracked deliberately (weights/ is committed)
