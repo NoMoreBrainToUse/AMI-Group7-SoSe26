@@ -45,6 +45,25 @@ class PipelineConfig:
     min_box_px: int = 4
     verifier_batch: int = 256
 
+    # --- event-activity-aware fusion ----------------------------------------
+    # A hovering drone produces almost no events, so its event crop is
+    # empty and the event verifier scores ~0 — an uninformed veto that
+    # kills exactly the detections the RGB lane exists to rescue. Scale
+    # the event verifier's fusion weight by how much event activity its
+    # crop actually contains: full weight at >= activity_full, down to
+    # activity_floor for silent crops.
+    activity_pixel_thresh: int = 140  # gray value above which a pixel counts as an event
+    activity_full: float = 0.05       # >= 5% active pixels -> full lambda
+    activity_floor: float = 0.15      # minimum lambda scale for silent crops
+
+    # --- dusk rejection for the RGB lane ------------------------------------
+    # In low light the RGB verifier cannot separate drones from clutter
+    # (measured: seq150, central luma 46 -> 659 kept RGB FPs vs 8 TPs),
+    # so RGB-sourced proposals are rejected on frames darker than this
+    # central-region mean gray value. The event lane is unaffected — event
+    # cameras are the low-light sensor by design.
+    rgb_dusk_luma: float = 50.0
+
     # --- alignment (FRED sequence -> paired frames) ------------------------
     rgb_dir_name: str = "PADDED_RGB"
     frame_period: float = 0.033333

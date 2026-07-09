@@ -33,6 +33,20 @@
 
     <section class="side-section">
       <h2>Pipeline</h2>
+      <div class="settings">
+        <label class="setting">
+          <span>RGB detector</span>
+          <select id="set-rgb-model"></select>
+        </label>
+        <label class="setting">
+          <span>RGB gate <b id="gate-val">0.60</b></span>
+          <input type="range" id="set-rgb-conf" min="0.05" max="1.0"
+                 step="0.05" value="0.60">
+        </label>
+        <div class="setting-note" id="setting-note">
+          defaults = final calibrated pipeline
+        </div>
+      </div>
       <div class="run-row">
         <button class="btn primary" id="run-btn" disabled>Run pipeline</button>
         <label class="check"><input type="checkbox" id="overwrite"> recompute</label>

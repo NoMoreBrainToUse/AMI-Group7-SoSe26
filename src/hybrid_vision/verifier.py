@@ -73,13 +73,18 @@ def score_proposals(
     model_path: Path,
     score_key: str,
     cfg: PipelineConfig,
+    measure_activity: bool = False,
     progress=print,
 ) -> list[dict]:
     """Score verifiable detections with one verifier; adds `score_key`.
 
     Returns only the detections outside the IoU gray zone, each augmented
     with a crop_id (stable across modalities — both verifiers see the same
-    detection order) and the verifier score.
+    detection order) and the verifier score. With measure_activity=True
+    (event modality) each record also gets `event_activity`: the fraction
+    of crop pixels brighter than cfg.activity_pixel_thresh — the fusion
+    stage uses it to weight the event verifier by how much its crop can
+    actually know.
     """
     import torch
 
@@ -103,6 +108,7 @@ def score_proposals(
         return img_cache[stem]
 
     scores: list[float] = []
+    activities: list[float] = []
     with torch.no_grad():
         for start in range(0, len(keep), cfg.verifier_batch):
             batch = keep[start:start + cfg.verifier_batch]
@@ -114,10 +120,31 @@ def score_proposals(
                 if arr is None:  # missing frame / degenerate box -> neutral
                     arr = np.zeros((3, crop_size, crop_size), dtype=np.float32)
                 tensors.append(arr)
+                if measure_activity:
+                    activities.append(_crop_activity(
+                        img, det["bbox_xyxy"], cfg))
             x = torch.from_numpy(np.stack(tensors)).to(device)
             scores.extend(torch.sigmoid(model(x).squeeze(1)).cpu().tolist())
             if (start // cfg.verifier_batch) % 10 == 0:
                 progress(f"  scored {min(start + cfg.verifier_batch, len(keep))}"
                          f"/{len(keep)} crops ({score_key})")
 
-    return [{**det, score_key: round(s, 6)} for det, s in zip(keep, scores)]
+    out = [{**det, score_key: round(s, 6)} for det, s in zip(keep, scores)]
+    if measure_activity:
+        for rec, act in zip(out, activities):
+            rec["event_activity"] = round(act, 5)
+    return out
+
+
+def _crop_activity(img: np.ndarray | None, bbox: list[float],
+                   cfg: PipelineConfig) -> float:
+    """Fraction of event-crop pixels brighter than the activity threshold."""
+    if img is None:
+        return 0.0
+    h, w = img.shape[:2]
+    x1, y1, x2, y2 = expand_box(bbox, cfg.box_scale, w, h)
+    crop = img[y1:y2, x1:x2]
+    if crop.size == 0:
+        return 0.0
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+    return float((gray > cfg.activity_pixel_thresh).mean())

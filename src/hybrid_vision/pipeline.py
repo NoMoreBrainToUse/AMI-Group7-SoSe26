@@ -98,7 +98,9 @@ def run_sequence(
     else:
         event_props = [d for d in proposals["event"]
                        if d["detector_score"] >= cfg.proposal_conf]
-        merged, stats = merge_proposals(event_props, proposals["rgb"], cfg)
+        merged, stats = merge_proposals(
+            event_props, proposals["rgb"], cfg,
+            rgb_images_dir=processed / "rgb_yolo" / "images" / SPLIT)
         stats.update(coverage_stats(
             merged, processed / "event_yolo" / "labels" / SPLIT, cfg))
         write_jsonl(merged_path, merged)
@@ -121,7 +123,8 @@ def run_sequence(
             continue
         recs = score_proposals(
             merged, processed / f"{modality}_yolo" / "images", SPLIT, ext,
-            Path(model), key, cfg, progress=progress)
+            Path(model), key, cfg,
+            measure_activity=(modality == "event"), progress=progress)
         write_jsonl(path, recs)
         scored[modality] = recs
 

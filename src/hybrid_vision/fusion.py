@@ -1,9 +1,16 @@
 """Late fusion, honest metrics, and web-ready outputs.
 
 Fusion combines the two verifier probabilities in log-odds space —
-independent evidence adds in logits (naive-Bayes fusion):
+independent evidence adds in logits (naive-Bayes fusion), with the event
+verifier's weight scaled by how much event activity its crop contains:
 
-    fusion = sigmoid( logit(s_rgb) + lambda * logit(s_event) )
+    w      = clip(event_activity / activity_full, activity_floor, 1)
+    fusion = sigmoid( logit(s_rgb) + lambda * w * logit(s_event) )
+
+A hovering drone produces almost no events; its event crop is empty and the
+event verifier scores ~0 out of ignorance, not evidence. Scaling by measured
+crop activity removes that uninformed veto while leaving fusion unchanged
+wherever events are actually present (w saturates at 1 for normal motion).
 
 A detection is kept when fusion >= tau. Lambda and tau come from
 weights/fusion_config.json and were calibrated on a diverse validation pool.
@@ -46,8 +53,11 @@ def fuse_scores(rgb_scored: list[dict], event_scored: list[dict],
     for r, e in zip(rgb_scored, event_scored):
         if r["crop_id"] != e["crop_id"]:
             raise ValueError(f"crop_id mismatch: {r['crop_id']} vs {e['crop_id']}")
+        activity = e.get("event_activity")
+        w = 1.0 if activity is None else max(
+            cfg.activity_floor, min(1.0, activity / cfg.activity_full))
         fs = sigmoid(logit(r["rgb_verifier_score"])
-                     + cfg.fusion_lambda * logit(e["event_verifier_score"]))
+                     + cfg.fusion_lambda * w * logit(e["event_verifier_score"]))
         fused.append({
             "crop_id": r["crop_id"],
             "stem": r["stem"],
@@ -60,6 +70,7 @@ def fuse_scores(rgb_scored: list[dict], event_scored: list[dict],
             "rgb_verifier_score": r["rgb_verifier_score"],
             "event_verifier_score": e["event_verifier_score"],
             "fusion_score": round(fs, 6),
+            "event_activity": activity,
             "kept": fs >= cfg.fusion_threshold,
             "iou_with_gt": r.get("iou_with_gt", 0.0),
             "label": r["label"],
@@ -145,7 +156,8 @@ def write_web_outputs(
 
     det_fields = ("crop_id", "source", "class", "bbox_xyxy", "detector_score",
                   "rgb_verifier_score", "event_verifier_score",
-                  "fusion_score", "kept", "iou_with_gt", "label")
+                  "event_activity", "fusion_score", "kept", "iou_with_gt",
+                  "label")
 
     frames: list[dict] = []
     records: list[str] = []

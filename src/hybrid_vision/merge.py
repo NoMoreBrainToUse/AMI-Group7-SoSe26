@@ -21,13 +21,44 @@ from .common import iou_xyxy, read_yolo_labels
 from .config import PipelineConfig
 
 
+def _frame_luma(path: Path) -> float:
+    """Mean gray value of the central region (ignores the FRED padding)."""
+    import cv2
+    img = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
+    if img is None:
+        return 255.0  # unreadable -> do not reject on brightness
+    h, w = img.shape
+    return float(img[h // 6:5 * h // 6, w // 6:5 * w // 6].mean())
+
+
 def merge_proposals(
     event_dets: list[dict],
     rgb_dets: list[dict],
     cfg: PipelineConfig,
+    rgb_images_dir: Path | None = None,
 ) -> tuple[list[dict], dict]:
-    """Return (merged detections, stats). Inputs are full detection lists."""
+    """Return (merged detections, stats). Inputs are full detection lists.
+
+    When rgb_images_dir is given, RGB proposals on dusk frames (central
+    luma < cfg.rgb_dusk_luma) are rejected before merging — the RGB
+    verifier is unreliable in low light. Luma is only computed for frames
+    that actually have gated RGB proposals.
+    """
     rgb_gated = [d for d in rgb_dets if d["detector_score"] >= cfg.rgb_min_conf]
+
+    n_dusk_rejected = 0
+    if rgb_images_dir is not None and rgb_gated:
+        luma_cache: dict[str, float] = {}
+        kept_after_dusk = []
+        for d in rgb_gated:
+            stem = d["stem"]
+            if stem not in luma_cache:
+                luma_cache[stem] = _frame_luma(rgb_images_dir / f"{stem}.jpg")
+            if luma_cache[stem] >= cfg.rgb_dusk_luma:
+                kept_after_dusk.append(d)
+            else:
+                n_dusk_rejected += 1
+        rgb_gated = kept_after_dusk
 
     by_stem_event: dict[str, list[dict]] = defaultdict(list)
     by_stem_rgb: dict[str, list[dict]] = defaultdict(list)
@@ -46,7 +77,11 @@ def merge_proposals(
             if dup is None:
                 frame.append({**r, "source": "rgb"})
             else:
-                dup["source"] = "both"
+                # "both" only when the two DETECTORS agree; an RGB det
+                # overlapping another RGB det stays source="rgb" so the
+                # confidence gate can still filter it.
+                if dup["source"] in ("event", "both"):
+                    dup["source"] = "both"
                 dup["detector_score"] = round(
                     max(dup["detector_score"], r["detector_score"]), 6)
         merged.extend(frame)
@@ -59,6 +94,8 @@ def merge_proposals(
         "rgb_detections_total": len(rgb_dets),
         "rgb_detections_gated": len(rgb_gated),
         "rgb_min_conf": cfg.rgb_min_conf,
+        "rgb_dusk_luma": cfg.rgb_dusk_luma,
+        "rgb_rejected_dusk": n_dusk_rejected,
         "dedup_iou": cfg.dedup_iou,
         "merged_detections": len(merged),
         "by_source": dict(counts),

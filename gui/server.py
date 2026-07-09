@@ -112,7 +112,44 @@ async def upload(file: UploadFile) -> dict:
     return {"sequence": seq}
 
 
-def _run_pipeline(seq: str, overwrite: bool) -> None:
+# selectable RGB detectors; "v5" is the final calibrated pipeline default
+RGB_MODELS = {
+    "v5": {"path": "rgb_yolo11m.pt", "imgsz": 640,
+           "label": "v5 (default, imgsz 640)"},
+    "v6": {"path": "rgb_yolo11m_v6.pt", "imgsz": 1280,
+           "label": "v6 retrain (imgsz 1280)"},
+}
+DEFAULT_SETTINGS = {"rgb_model": "v5", "rgb_min_conf": 0.60}
+
+
+def _apply_settings(cfg: PipelineConfig, settings: dict) -> None:
+    spec = RGB_MODELS[settings["rgb_model"]]
+    cfg.rgb_model = REPO_ROOT / "weights" / spec["path"]
+    cfg.rgb_imgsz = spec["imgsz"]
+    cfg.rgb_min_conf = settings["rgb_min_conf"]
+
+
+def _invalidate_stale(seq: str, settings: dict) -> None:
+    """Clear cached artifacts that the new settings invalidate.
+
+    The event lane never changes. A different RGB model invalidates the RGB
+    proposals; any settings change invalidates merge and everything after.
+    """
+    out = OUTPUTS_DIR / seq
+    settings_file = out / "run_settings.json"
+    prev = (json.loads(settings_file.read_text(encoding="utf-8"))
+            if settings_file.is_file() else None)
+    if prev == settings:
+        return
+    if prev is None or prev.get("rgb_model") != settings["rgb_model"]:
+        (out / "proposals_rgb.jsonl").unlink(missing_ok=True)
+    for name in ("proposals_merged.jsonl", "merge_stats.json",
+                 "scored_rgb.jsonl", "scored_event.jsonl", "tracks.json"):
+        (out / name).unlink(missing_ok=True)
+    shutil.rmtree(out / "web", ignore_errors=True)
+
+
+def _run_pipeline(seq: str, overwrite: bool, settings: dict) -> None:
     run = _runs[seq]
 
     def progress(msg: str) -> None:
@@ -121,27 +158,45 @@ def _run_pipeline(seq: str, overwrite: bool) -> None:
 
     try:
         cfg = PipelineConfig()
+        _apply_settings(cfg, settings)
+        progress(f"settings: RGB {settings['rgb_model']}, "
+                 f"gate {settings['rgb_min_conf']:.2f}")
+        _invalidate_stale(seq, settings)
         run_sequence(DATASET_DIR / seq, cfg,
                      processed_root=PROCESSED_DIR, outputs_root=OUTPUTS_DIR,
                      overwrite=overwrite, progress=progress)
         (OUTPUTS_DIR / seq / "tracks.json").unlink(missing_ok=True)
+        (OUTPUTS_DIR / seq / "run_settings.json").write_text(
+            json.dumps(settings), encoding="utf-8")
         run["state"] = "done"
     except Exception as exc:  # surfaced to the UI, not swallowed
         run["state"] = "error"
         run["error"] = f"{type(exc).__name__}: {exc}"
 
 
+@app.get("/api/settings")
+def settings_options() -> dict:
+    return {"rgb_models": {k: v["label"] for k, v in RGB_MODELS.items()},
+            "defaults": DEFAULT_SETTINGS}
+
+
 @app.post("/api/run/{seq}")
-def run(seq: str, overwrite: bool = False) -> dict:
+def run(seq: str, overwrite: bool = False, rgb_model: str = "v5",
+        rgb_min_conf: float = 0.60) -> dict:
     if not (DATASET_DIR / seq / "PADDED_RGB").is_dir():
         raise HTTPException(404, f"No sequence '{seq}' in dataset/")
+    if rgb_model not in RGB_MODELS:
+        raise HTTPException(400, f"rgb_model must be one of {list(RGB_MODELS)}")
+    if not 0.05 <= rgb_min_conf <= 1.0:
+        raise HTTPException(400, "rgb_min_conf must be in [0.05, 1.0]")
+    settings = {"rgb_model": rgb_model, "rgb_min_conf": round(rgb_min_conf, 2)}
     with _run_lock:
         if any(r.get("state") == "running" for r in _runs.values()):
             raise HTTPException(409, "A pipeline run is already in progress")
         _runs[seq] = {"state": "running", "log": [], "error": None}
-        threading.Thread(target=_run_pipeline, args=(seq, overwrite),
+        threading.Thread(target=_run_pipeline, args=(seq, overwrite, settings),
                          daemon=True).start()
-    return {"sequence": seq, "state": "running"}
+    return {"sequence": seq, "state": "running", "settings": settings}
 
 
 @app.get("/api/status/{seq}")

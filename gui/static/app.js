@@ -190,16 +190,46 @@ function logLine(msg, err = false) {
   c.scrollTop = c.scrollHeight;
 }
 
+let DEFAULT_SETTINGS = { rgb_model: "v5", rgb_min_conf: 0.6 };
+
+async function setupSettings() {
+  const opts = await (await fetch("/api/settings")).json();
+  DEFAULT_SETTINGS = opts.defaults;
+  const sel = $("#set-rgb-model");
+  sel.innerHTML = Object.entries(opts.rgb_models).map(([k, label]) =>
+    `<option value="${k}" ${k === opts.defaults.rgb_model ? "selected" : ""}>
+       ${label}</option>`).join("");
+  $("#set-rgb-conf").value = opts.defaults.rgb_min_conf;
+  $("#gate-val").textContent = (+opts.defaults.rgb_min_conf).toFixed(2);
+  const onchange = () => {
+    $("#gate-val").textContent = (+$("#set-rgb-conf").value).toFixed(2);
+    const isDefault =
+      sel.value === DEFAULT_SETTINGS.rgb_model &&
+      +$("#set-rgb-conf").value === +DEFAULT_SETTINGS.rgb_min_conf;
+    const note = $("#setting-note");
+    note.textContent = isDefault
+      ? "defaults = final calibrated pipeline"
+      : "changed - next run recomputes the RGB lane";
+    note.classList.toggle("changed", !isDefault);
+  };
+  sel.onchange = onchange;
+  $("#set-rgb-conf").oninput = onchange;
+}
+
 async function runPipeline() {
   if (!state.selected) return;
   const overwrite = $("#overwrite").checked;
+  const rgbModel = $("#set-rgb-model").value;
+  const rgbConf = +$("#set-rgb-conf").value;
   const res = await fetch(
-    `/api/run/${state.selected}?overwrite=${overwrite}`, { method: "POST" });
+    `/api/run/${state.selected}?overwrite=${overwrite}` +
+    `&rgb_model=${rgbModel}&rgb_min_conf=${rgbConf}`, { method: "POST" });
   if (!res.ok) {
     logLine((await res.json()).detail || "run refused", true);
     return;
   }
-  logLine(`pipeline started on seq ${state.selected}`);
+  logLine(`pipeline started on seq ${state.selected} ` +
+          `(RGB ${rgbModel}, gate ${rgbConf.toFixed(2)})`);
   $("#run-btn").disabled = true;
   pollStatus(state.selected);
 }
@@ -773,6 +803,7 @@ document.querySelectorAll(".tab").forEach((t) => {
 });
 $("#run-btn").onclick = runPipeline;
 setupUpload();
+setupSettings();
 refreshSequences().then(() => {
   const ready = state.sequences.find((s) => s.results);
   if (ready) selectSequence(ready.name);
