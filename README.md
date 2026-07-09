@@ -49,6 +49,9 @@ drone produces almost no events (measured on FRED seq31: event-YOLO covers
 is gated hard so it only adds proposals it is very sure about, and every
 proposal still passes the verifiers.
 
+Note: the V6 YOLO RGB weights are too big so it is being excluded from the repo.
+It can be downloaded under https://drive.google.com/file/d/1FRDlhGFMlxmB_cx17capjHpIAZJwIE4-/view?usp=drive_link
+
 ## Web interface
 
 - **Sidebar** — sequences on disk with their state, zip drag & drop,
