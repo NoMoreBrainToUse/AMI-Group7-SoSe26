@@ -1,0 +1,18 @@
+# Pinned to the versions the pipeline was verified with (2026-07).
+# torch/torchvision: install the build matching your CUDA, e.g.
+#   pip install torch==2.6.0 torchvision==0.21.0 --index-url https://download.pytorch.org/whl/cu124
+torch==2.6.0
+torchvision==0.21.0
+ultralytics==8.4.90
+opencv-python==4.13.0.92
+numpy==2.4.4
+matplotlib==3.11.0
+
+# web interface (run_gui.py)
+fastapi==0.139.0
+uvicorn==0.50.2
+python-multipart==0.0.32
+# Kalman tracking tab (Hungarian assignment)
+scipy==1.17.1
+# sample-sequence download (setup.sh --sample)
+gdown==5.2.0
