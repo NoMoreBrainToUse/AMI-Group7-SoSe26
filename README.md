@@ -11,7 +11,7 @@ are bounding boxes with class label (`drone`) and a fusion confidence.
 ```bash
 ./setup.sh --sample     # venv + all deps (CUDA/CPU auto) + FRED seq 40 (~2.3 GB)
 .venv/bin/python run_gui.py
-# open http://localhost:8501  →  select "seq 40"  →  Run pipeline
+# open the link in terminal  →  select "seq 40"  →  Run pipeline
 ```
 
 The first pipeline run takes a few minutes on GPU (longer on CPU: two YOLO
@@ -26,22 +26,47 @@ Headless (no GUI):
 .venv/bin/python run_pipeline.py dataset/40 --device cpu
 ```
 
+## Run with Docker
+
+Run docker with docer compose and the web interface comes up in the terminal provided address.  model weights are baked into
+the image, and `dataset/`, `outputs/`, `processed/` are mounted from the repo.
+
+**CPU (runs anywhere):**
+
+```bash
+docker compose up --build      # build (first run) + start → http://localhost:8501
+docker compose down            # stop
+```
+
+**GPU (NVIDIA GPU + driver + [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)):**
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build
+```
+
+The pipeline auto-selects CUDA when a GPU is visible.
+Same trade-off as a local install: CPU works everywhere but a full run takes
+several minutes (two YOLO passes + two verifiers over ~2,100 frames); the GPU image is much faster but only runs on NVIDIA hardware.
+
+
+To run the pipeline headless inside the container instead of the GUI, append a command, e.g.
+`docker compose run --rm hybrid-vision python run_pipeline.py dataset/40`.
+
+> If `docker build` fails resolving `deb.debian.org` (Docker's default build
+> network can't reach a host `systemd-resolved` stub on some Linux setups),
+> add `--network=host` to the build command. The Compose files already do
+> this.
+
 ## What the pipeline does
 
-```
-FRED sequence (PADDED_RGB + Event/Frames + coordinates)
-        │  align.py — time-align RGB↔event, shared stems & coords
-        ▼
-  event-YOLO (conf ≥ 0.20) ─┐
-  RGB-YOLO  (conf ≥ 0.60)  ─┴─► merge.py — union, cross-modality dedup
-        │                       source: event | rgb | both
-        ▼
-  verifier.py — RGB + event EfficientNet-B0 crop scores (in memory)
-        ▼
-  fusion.py — σ(logit(s_rgb) + λ·logit(s_event)) ≥ τ  → kept
-        ▼
-  outputs/<seq>/web/fusion_{detections,manifest}_<seq>.{jsonl,json}
-```
+![Hybrid Vision pipeline](doc/pipeline.png)
+
+*Interactive version (hover each stage for detail):*
+[`doc/pipeline.html`](doc/pipeline.html) — regenerate both with
+`python doc/pipeline_diagram.py` (needs `plotly` + `kaleido`). Kept detections
+are written to
+`outputs/<seq>/web/fusion_{detections,manifest}_<seq>.{jsonl,json}`; the exact
+fusion rule is σ(logit(s_rgb) + λ·logit(s_event)) ≥ τ.
 
 Why two detectors: an event camera sees brightness *change* — a hovering
 drone produces almost no events (measured on FRED seq31: event-YOLO covers
@@ -51,6 +76,7 @@ proposal still passes the verifiers.
 
 Note: the V6 YOLO RGB weights are too big so it is being excluded from the repo.
 It can be downloaded under https://drive.google.com/file/d/1FRDlhGFMlxmB_cx17capjHpIAZJwIE4-/view?usp=drive_link
+Though results are only on par and sometime worse the V5 due to laack of computational power and time. 
 
 ## Web interface
 
@@ -75,48 +101,23 @@ FRED:
 
 ```
 <seq>/
-  PADDED_RGB/                     RGB frames, 1280×720 JPEG, padded to the
-                                  event sensor's field of view (shared
-                                  coordinate space with the event frames)
-      Video_<seq>_<H>_<M>_<S.frac>.jpg    wall-clock naming; frame i is
-                                          placed at (i+1) × 1/30 s
-  Event/Frames/                   event frames, 1280×720 PNG
-      *_<time_us>.png             timestamp in µs since sequence start
-  interpolated_coordinates.txt    annotations, one box per line:
-      <t_seconds>: x1, y1, x2, y2[, track_id]
-  (coordinates.txt is used as fallback when the interpolated file is absent)
+├── PADDED_RGB/                       RGB frames
+│   └── Video_<seq>_<H>_<M>_<S.frac>.jpg
+├── Event/Frames/                     event frames
+│   └── *_<time_us>.png
+└── interpolated_coordinates.txt      annotations   (coordinates.txt = fallback)
 ```
+
+| Entry | Format | Details |
+|---|---|---|
+| `PADDED_RGB/*.jpg` | 1280×720 JPEG | Padded to the event sensor's field of view (shared coordinate space with the event frames). Wall-clock naming; frame *i* sits at (*i*+1) × 1/30 s. |
+| `Event/Frames/*.png` | 1280×720 PNG | Filename timestamp is µs since sequence start. |
+| `interpolated_coordinates.txt` | text, one box per line | `<t_seconds>: x1, y1, x2, y2[, track_id]`. `coordinates.txt` is used when the interpolated file is absent. |
 
 Alignment pairs each annotation timestamp with the nearest RGB and event
 frame within 40 ms; pairs are written with a shared stem so cross-modality
 crops and proposal merging are exact. Multiple boxes per timestamp
 (multiple drones) are supported.
-
-## Metrics — read this before quoting numbers
-
-`fusion_manifest_*.json → metrics` is **GT-box level over all frames**: a
-ground-truth drone that no kept detection matches at IoU ≥ 0.5 counts as a
-false negative, *including frames where the detectors proposed nothing*.
-`metrics_conditional` is the older proposal-only view kept for reference — it
-ignores such misses entirely (it once reported 97% F1 at a true recall of
-82%; don't quote it as system performance).
-
-## Layout
-
-| Path | What |
-|---|---|
-| `setup.sh` | one-command install (+ `--sample` test sequence) |
-| `run_gui.py` / `run_pipeline.py` | web interface / headless CLI |
-| `src/hybrid_vision/config.py` | every path + threshold (one dataclass) |
-| `src/hybrid_vision/align.py` | FRED sequence → paired frames, YOLO layout |
-| `src/hybrid_vision/detect.py` | YOLO proposals, one low-conf pass per modality |
-| `src/hybrid_vision/merge.py` | hybrid union + dedup + recall-ceiling stats |
-| `src/hybrid_vision/verifier.py` | EfficientNet crop scoring (in memory) |
-| `src/hybrid_vision/fusion.py` | log-odds fusion, honest metrics, web outputs |
-| `src/hybrid_vision/pipeline.py` | phase orchestration + caching |
-| `gui/` | FastAPI server + canvas single-page app |
-| `training/` | detector / verifier training, crop export, fusion calibration |
-| `weights/` | committed model weights + fusion operating point |
 
 ## Weights
 

@@ -1,0 +1,25 @@
+#   docker compose up --build      # build (first time) + start
+#   docker compose up              # start (reuses the built image)
+#   Ctrl-C / docker compose down   # stop
+
+services:
+  hybrid-vision:
+    build:
+      context: .
+      network: host
+    image: hybrid-vision
+    ports:
+      # host:container — change the left side to move the port on your machine.
+      - "8501:8501"
+    volumes:
+      # Bind-mount the runtime data dirs so results survive container restarts
+      # and zips you upload / sequences you download land back on the host.
+      - ./dataset:/app/dataset
+      - ./outputs:/app/outputs
+      - ./processed:/app/processed
+    # First pipeline run is CPU-bound and does heavy inference;
+    # (Adjust or remove if your machine has less RAM.)
+    # deploy:
+    #   resources:
+    #     limits:
+    #       memory: 8g

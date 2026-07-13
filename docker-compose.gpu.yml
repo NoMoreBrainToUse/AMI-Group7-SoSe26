@@ -1,0 +1,20 @@
+# GPU override for docker-compose.yml. Layer it on top of the base file:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build
+#
+# It swaps the build to Dockerfile.gpu and reserves the host GPU(s) for the
+# container. Everything else (ports, volumes) is inherited from the base file.
+# Requires an NVIDIA GPU + driver + NVIDIA Container Toolkit on the host.
+
+services:
+  hybrid-vision:
+    build:
+      dockerfile: Dockerfile.gpu
+    image: hybrid-vision-gpu
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

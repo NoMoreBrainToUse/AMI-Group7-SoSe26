@@ -1,0 +1,34 @@
+# Keep the build context small and fast. Everything here is either huge,
+# regenerable, or host-specific — none of it belongs inside the image.
+
+# Local virtualenv (host-specific, ~GBs; the image builds its own deps)
+.venv/
+
+# Git history
+.git/
+.gitignore
+
+# Runtime data & generated artifacts (mounted as volumes at run time instead)
+dataset/
+processed/
+outputs/
+runs/
+wandb/
+
+# Python caches
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# Stray model downloads at repo root (real weights live in weights/)
+/*.pt
+/*.pt.tar
+
+# Docker files themselves
+Dockerfile
+Dockerfile.gpu
+.dockerignore
+docker-compose.yml
+docker-compose.gpu.yml

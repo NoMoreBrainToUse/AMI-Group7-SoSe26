@@ -1,0 +1,53 @@
+# syntax=docker/dockerfile:1
+#
+# Hybrid Vision drone detection — GPU (CUDA) image.
+# Identical to the CPU Dockerfile except it installs the CUDA 12.4 torch
+# wheels (same as setup.sh's CUDA branch). Those wheels bundle their own
+# CUDA runtime libraries, so a plain python base is enough — the host's
+# NVIDIA driver + nvidia-container-toolkit supply GPU access at run time.
+#
+# Requires on the host: an NVIDIA GPU, its driver, and the NVIDIA Container
+# Toolkit (so `docker run --gpus all ...` works).
+#
+# Build:  docker build --network=host -f Dockerfile.gpu -t hybrid-vision-gpu .
+# Run:    docker run --rm --gpus all -p 8501:8501 \
+#             -v "$PWD/dataset:/app/dataset" -v "$PWD/outputs:/app/outputs" \
+#             -v "$PWD/processed:/app/processed" hybrid-vision-gpu
+# Then open http://localhost:8501
+
+FROM python:3.12-slim
+
+# --- OS-level dependencies --------------------------------------------------
+# opencv-python needs libGL (libgl1) and libglib2.0-0 even headless.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libgl1 \
+        libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# --- Python dependencies ----------------------------------------------------
+COPY requirements.txt .
+
+ENV PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# CUDA 12.4 torch/torchvision first (from PyTorch's cu124 wheel index), so
+# the torch/torchvision lines in requirements.txt are already satisfied and
+# pip won't replace them. These wheels pull the nvidia-* CUDA runtime libs.
+RUN pip install --upgrade pip && \
+    pip install torch==2.6.0 torchvision==0.21.0 \
+        --index-url https://download.pytorch.org/whl/cu124 && \
+    pip install -r requirements.txt
+
+# --- Application code + weights --------------------------------------------
+COPY . .
+
+# Point Ultralytics at a writable base for its config dir (default under
+# $HOME warns "not writable"); it appends "/Ultralytics" -> /tmp/Ultralytics.
+ENV YOLO_CONFIG_DIR=/tmp
+
+EXPOSE 8501
+
+# The pipeline auto-selects CUDA when torch.cuda.is_available(); no flag needed.
+CMD ["python", "run_gui.py", "--host", "0.0.0.0", "--port", "8501"]
