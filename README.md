@@ -59,7 +59,7 @@ To run the pipeline headless inside the container instead of the GUI, append a c
 
 ## What the pipeline does
 
-![Hybrid Vision pipeline](doc/pipeline.png)
+![Hybrid Vision pipeline](doc/Pipeline.png)
 
 *Interactive version (hover each stage for detail):*
 [`doc/pipeline.html`](doc/pipeline.html) — regenerate both with
