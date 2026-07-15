@@ -125,7 +125,7 @@ crops and proposal merging are exact. Multiple boxes per timestamp
 |---|---|---|
 | `event_yolo11m.pt` | YOLO11m, event frames, imgsz 640 | mAP50 0.86 (v5, 54 seqs) |
 | `rgb_yolo11m.pt` | YOLO11m, RGB frames, imgsz 640 | v5 — weak (mAP50 0.25); v6 retrain in progress |
-| `verifier_{rgb,event}_effb0.pt` | EfficientNet-B0, 96 px crops | drone vs background |
+| `verifier_{rgb,event}_effb0.pt` | MobileNetV3-Small, 96 px crops | drone vs background |
 | `fusion_config.json` | λ=1.0, τ=0.034 | calibrated on an 11-seq diverse pool; see file for why not λ=2.0/τ=0.002 |
 
 To evaluate different RGB weights without touching the defaults:
